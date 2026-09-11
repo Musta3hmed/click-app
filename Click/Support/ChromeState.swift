@@ -13,4 +13,7 @@ import Observation
 @Observable
 final class ChromeState {
     var tabBarHidden = false
+    /// Set by screens that want to switch tabs (e.g. the chats empty state
+    /// jumping to swipe); RootView consumes it.
+    var requestedTab: AppTab?
 }

@@ -47,8 +47,23 @@ enum MockData {
 
         let profiles = (try? context.fetch(candidatesDescriptor)) ?? []
 
-        if (try? context.fetchCount(FetchDescriptor<Conversation>())) == 0 {
+        // Demo chats no longer pre-empt the empty state: a brand-new
+        // account sees "no chats yet" and the message seeds only arrive
+        // once the user has actually liked someone (checked per launch, so
+        // they trickle in rather than appearing en masse on day one).
+        let hasSwiped = ((try? context.fetchCount(FetchDescriptor<Match>())) ?? 0) > 0
+        if hasSwiped, (try? context.fetchCount(FetchDescriptor<Conversation>())) == 0 {
             seedConversations(context, profiles: profiles)
+        }
+
+        // Super-like requests top-up: fetch-count guard so existing
+        // phase-3 stores gain the accept/deny flow too.
+        let superRaw = RequestState.pending.rawValue
+        let pendingDescriptor = FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.isSuperLike && $0.requestStateRaw == superRaw }
+        )
+        if (try? context.fetchCount(pendingDescriptor)) == 0 {
+            seedSuperLikeRequests(context, profiles: profiles)
         }
         if (try? context.fetchCount(FetchDescriptor<BoosterInventory>())) == 0 {
             seedBoosters(context)
@@ -180,6 +195,39 @@ enum MockData {
                 newest = max(newest, sentAt)
             }
             conversation.lastActivity = newest
+        }
+    }
+
+    /// 2–3 pending super-like requests so the accept/deny flow is
+    /// exercisable without a backend.
+    private static func seedSuperLikeRequests(_ context: ModelContext, profiles: [UserProfile]) {
+        let scripts: [(Int, String, Int)] = [
+            (7, "ok your bio got me. fantasy team rivalry when?", 240),
+            (13, "two truths and a lie: I super liked you, I regret it, I make great pasta", 720),
+            (19, "your playlist taste is elite and I need the link", 1_100)
+        ]
+        for (profileIndex, text, minutesAgo) in scripts {
+            guard profiles.indices.contains(profileIndex) else { continue }
+            let profile = profiles[profileIndex]
+
+            // Don't stack a request on someone the user already talks to.
+            let profileID = profile.id
+            let existing = FetchDescriptor<Conversation>(
+                predicate: #Predicate { $0.participant?.id == profileID }
+            )
+            guard ((try? context.fetchCount(existing)) ?? 0) == 0 else { continue }
+
+            let sentAt = Date.now.addingTimeInterval(-Double(minutesAgo) * 60)
+            let conversation = Conversation(
+                participant: profile,
+                folder: .requests,
+                lastActivity: sentAt,
+                unreadCount: 1,
+                isSuperLike: true,
+                requestState: .pending
+            )
+            context.insert(conversation)
+            context.insert(Message(text: text, isFromMe: false, sentAt: sentAt, conversation: conversation))
         }
     }
 

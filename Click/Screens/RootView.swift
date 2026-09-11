@@ -95,6 +95,11 @@ struct RootView: View {
             }
         }
         .animation(Theme.Motion.state, value: chrome.tabBarHidden)
+        .onChange(of: chrome.requestedTab) { _, requested in
+            guard let requested else { return }
+            withAnimation(Theme.Motion.state) { selection = requested }
+            chrome.requestedTab = nil
+        }
         .environment(chrome)
         .task {
             MockData.seedIfNeeded(context)

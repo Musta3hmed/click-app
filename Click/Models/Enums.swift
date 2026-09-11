@@ -40,7 +40,8 @@ enum BoosterKind: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-/// The four tabs on the chats screen.
+/// The four tabs on the chats screen. `topPicks` keeps its raw value for
+/// stored rows but now presents as the matches list.
 enum ChatFolder: String, CaseIterable, Identifiable, Codable {
     case messages
     case requests
@@ -54,7 +55,7 @@ enum ChatFolder: String, CaseIterable, Identifiable, Codable {
         case .messages: "messages"
         case .requests: "requests"
         case .views: "views"
-        case .topPicks: "top picks"
+        case .topPicks: "matches"
         }
     }
 }
