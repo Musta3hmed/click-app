@@ -40,7 +40,7 @@ struct ProfileView: View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                OverlappingSheet {
+                OverlappingSheet(ambient: true) {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
                         bingoSection

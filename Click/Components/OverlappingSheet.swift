@@ -13,6 +13,9 @@ struct OverlappingSheet<Content: View>: View {
     /// backgroundRaised: identical to the background in light, one step
     /// lighter in dark — without it the sheet disappeared on OLED.
     var fill: Color = Theme.backgroundRaised
+    /// The three main tabs draw the ambient brand wash inside the sheet.
+    /// Conversations, settings and onboarding stay flat (readability).
+    var ambient: Bool = false
     @ViewBuilder var content: () -> Content
 
     private var shape: UnevenRoundedRectangle {
@@ -28,7 +31,14 @@ struct OverlappingSheet<Content: View>: View {
     var body: some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(shape.fill(fill))
+            .background {
+                shape.fill(fill)
+                    .overlay {
+                        if ambient {
+                            AmbientBackground().clipShape(shape)
+                        }
+                    }
+            }
             // Top hairline (masked to the curved top band only) so the
             // sheet edge reads in dark mode.
             .overlay {

@@ -63,7 +63,7 @@ struct SwipeView: View {
                 .font(.system(size: 14, weight: .bold))
             }
 
-            OverlappingSheet {
+            OverlappingSheet(ambient: true) {
                 VStack(spacing: 14) {
                     cardArea
                     actionRow

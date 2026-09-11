@@ -21,7 +21,7 @@ struct ChatsView: View {
             VStack(spacing: 0) {
                 header
 
-                OverlappingSheet {
+                OverlappingSheet(ambient: true) {
                     VStack(spacing: 0) {
                         FolderTabs(selection: $folder, badgedFolders: badgedFolders)
                             .padding(.top, 18)
