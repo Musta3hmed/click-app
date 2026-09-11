@@ -103,8 +103,15 @@ extension LocationService: CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.first else { return }
+        // Snap to ~0.01° (~1km) before geocoding. desiredAccuracy is only a
+        // request — if the system hands us a precise fix anyway, degrade it
+        // ourselves so street-level data never leaves this function.
+        let coarse = CLLocation(
+            latitude: (location.coordinate.latitude * 100).rounded() / 100,
+            longitude: (location.coordinate.longitude * 100).rounded() / 100
+        )
         Task { @MainActor in
-            reverseGeocode(location)
+            reverseGeocode(coarse)
         }
     }
 

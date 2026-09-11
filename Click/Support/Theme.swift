@@ -75,7 +75,8 @@ enum Theme {
     static let primary = Color(light: 0x000000, dark: 0xF2F2F2)
     static let onPrimary = Color(light: 0xFFFFFF, dark: 0x000000)
 
-    static let secondary = Color(light: 0x9E9E9E, dark: 0x8A8A90)
+    // Light value chosen for WCAG AA (4.54:1 on the off-white background).
+    static let secondary = Color(light: 0x6B6B6B, dark: 0x8A8A90)
     static let accent = Color(hex: 0xFF3B5C)
     static let online = Color(hex: 0x34C759)
     static let coin = Color(hex: 0xE8B21E)
@@ -118,6 +119,12 @@ enum Theme {
     enum Metric {
         static let card: CGFloat = 24
         static let sheet: CGFloat = 28
+        /// Buttons, rows, text fields and other standalone controls.
+        static let control: CGFloat = 20
+        /// Grid tiles (photos, bingo).
+        static let tile: CGFloat = 16
+        /// Small chips, toasts, stamps.
+        static let chip: CGFloat = 12
         static let gutter: CGFloat = 16
         static let sheetOverlap: CGFloat = 24
         /// Height reserved at the bottom of scroll views so the floating

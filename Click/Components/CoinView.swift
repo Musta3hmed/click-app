@@ -15,11 +15,12 @@ struct CoinView: View {
     /// Increment to fire the earn animation (spin + pop).
     var earnTrigger: Int = 0
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var spin = false
 
     var body: some View {
         Group {
-            if animatesIdle {
+            if animatesIdle && !reduceMotion {
                 PhaseAnimator([IdlePhase.resting, .blinking, .wobbling]) { phase in
                     face(blinking: phase == .blinking)
                         .rotationEffect(.degrees(phase == .wobbling ? 6 : 0))

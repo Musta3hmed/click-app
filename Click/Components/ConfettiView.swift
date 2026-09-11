@@ -12,7 +12,9 @@ struct ConfettiView: View {
     /// Seconds the burst lasts before fading out.
     var duration: Double = 2.6
 
-    private let startDate = Date()
+    // @State, not a stored let: a plain property re-initialises on every
+    // body re-render, which made the burst loop forever.
+    @State private var startDate = Date()
 
     private struct Particle {
         let originX: CGFloat      // 0...1

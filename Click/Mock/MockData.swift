@@ -5,9 +5,13 @@
 //  Everything in this folder stands in for a backend. To move to a real API,
 //  replace `seedIfNeeded` with a network sync and delete this file.
 //
+//  No emoji anywhere in seed copy — emoji render as boxes wherever the
+//  emoji font is unavailable (a live issue in the iOS 26.3 simulator).
+//
 
 import Foundation
 import SwiftData
+import UIKit
 
 enum MockData {
 
@@ -31,7 +35,10 @@ enum MockData {
         seedConversations(context, profiles: profiles)
         seedBoosters(context)
         seedDailyRewards(context)
-        context.insert(Wallet(coins: 0))
+
+        if CommandLine.arguments.contains("--uitest-photos") {
+            seedUITestPhotos(context, profiles: profiles)
+        }
 
         try? context.save()
     }
@@ -40,28 +47,28 @@ enum MockData {
 
     private static func candidateProfiles() -> [UserProfile] {
         let seeds: [(String, Int, String, String, Zodiac, [String], Bool, Gender)] = [
-            ("Maya Chen", 19, "coffee first, talk later ☕️", "🇦🇺", .virgo, ["coffee", "film", "art"], true, .woman),
-            ("Leo Martins", 21, "skate or sleep", "🇧🇷", .leo, ["skating", "music", "travel"], false, .man),
-            ("Priya Raman", 20, "will out-argue you about movies", "🇮🇳", .gemini, ["film", "books", "debate"], true, .woman),
-            ("Noah Whitfield", 22, "gym → food → repeat", "🇬🇧", .taurus, ["gym", "food", "football"], false, .man),
-            ("Sofia Rossi", 19, "chaotic good", "🇮🇹", .sagittarius, ["dance", "fashion", "travel"], false, .woman),
-            ("Kai Tanaka", 20, "producing beats at 3am", "🇯🇵", .pisces, ["music", "gaming", "anime"], true, .man),
-            ("Amara Okafor", 21, "plant mum, dog aunt", "🇳🇬", .cancer, ["plants", "dogs", "cooking"], false, .woman),
-            ("Ethan Brooks", 23, "ask me about my fantasy team", "🇺🇸", .aries, ["sports", "gaming", "food"], false, .man),
-            ("Lena Novak", 18, "sketching strangers on the tram", "🇵🇱", .libra, ["art", "coffee", "music"], false, .woman),
-            ("Diego Herrera", 22, "salsa lessons, no experience needed", "🇲🇽", .scorpio, ["dance", "cooking", "travel"], true, .man),
-            ("Chloe Dubois", 20, "your nan's favourite", "🇫🇷", .capricorn, ["baking", "books", "cats"], false, .woman),
-            ("Arjun Patel", 21, "startup bro in recovery", "🇮🇳", .aquarius, ["tech", "gym", "coffee"], false, .man),
-            ("Zoe Kelly", 19, "surf report is my horoscope", "🇦🇺", .pisces, ["surfing", "music", "dogs"], true, .woman),
-            ("Mateo Silva", 20, "two truths and a lie, go", "🇦🇷", .gemini, ["football", "music", "travel"], false, .man),
-            ("Hana Kim", 22, "film photography enjoyer", "🇰🇷", .virgo, ["photography", "film", "coffee"], false, .woman),
-            ("Oscar Lindqvist", 23, "cold water swimmer, warm person", "🇸🇪", .taurus, ["swimming", "books", "hiking"], false, .man),
-            ("Fatima Haddad", 20, "architecture student, tired", "🇱🇧", .leo, ["design", "art", "coffee"], true, .woman),
-            ("Ruby Thompson", 18, "I will beat you at Mario Kart", "🇳🇿", .aries, ["gaming", "music", "dogs"], false, .woman),
-            ("Tomas Novotny", 21, "climbing walls, literally", "🇨🇿", .sagittarius, ["climbing", "hiking", "food"], false, .man),
-            ("Isla Fraser", 19, "playlist curator, professionally nosy", "🇬🇧", .cancer, ["music", "books", "film"], false, .woman),
-            ("Yusuf Demir", 22, "chess in the park, every Sunday", "🇹🇷", .libra, ["chess", "coffee", "travel"], false, .man),
-            ("Nina Petrova", 20, "ballet then burgers", "🇷🇺", .scorpio, ["dance", "food", "art"], false, .woman)
+            ("Maya Chen", 19, "coffee first, talk later", "AU", .virgo, ["coffee", "film", "art"], true, .woman),
+            ("Leo Martins", 21, "skate or sleep", "BR", .leo, ["skating", "music", "travel"], false, .man),
+            ("Priya Raman", 20, "will out-argue you about movies", "IN", .gemini, ["film", "books", "debate"], true, .woman),
+            ("Noah Whitfield", 22, "gym, food, repeat", "GB", .taurus, ["gym", "food", "football"], false, .man),
+            ("Sofia Rossi", 19, "chaotic good", "IT", .sagittarius, ["dance", "fashion", "travel"], false, .woman),
+            ("Kai Tanaka", 20, "producing beats at 3am", "JP", .pisces, ["music", "gaming", "anime"], true, .man),
+            ("Amara Okafor", 21, "plant mum, dog aunt", "NG", .cancer, ["plants", "dogs", "cooking"], false, .woman),
+            ("Ethan Brooks", 23, "ask me about my fantasy team", "US", .aries, ["sports", "gaming", "food"], false, .man),
+            ("Lena Novak", 18, "sketching strangers on the tram", "PL", .libra, ["art", "coffee", "music"], false, .woman),
+            ("Diego Herrera", 22, "salsa lessons, no experience needed", "MX", .scorpio, ["dance", "cooking", "travel"], true, .man),
+            ("Chloe Dubois", 20, "your nan's favourite", "FR", .capricorn, ["baking", "books", "cats"], false, .woman),
+            ("Arjun Patel", 21, "startup bro in recovery", "IN", .aquarius, ["tech", "gym", "coffee"], false, .man),
+            ("Zoe Kelly", 19, "surf report is my horoscope", "AU", .pisces, ["surfing", "music", "dogs"], true, .woman),
+            ("Mateo Silva", 20, "two truths and a lie, go", "AR", .gemini, ["football", "music", "travel"], false, .man),
+            ("Hana Kim", 22, "film photography enjoyer", "KR", .virgo, ["photography", "film", "coffee"], false, .woman),
+            ("Oscar Lindqvist", 23, "cold water swimmer, warm person", "SE", .taurus, ["swimming", "books", "hiking"], false, .man),
+            ("Fatima Haddad", 20, "architecture student, tired", "LB", .leo, ["design", "art", "coffee"], true, .woman),
+            ("Ruby Thompson", 18, "I will beat you at Mario Kart", "NZ", .aries, ["gaming", "music", "dogs"], false, .woman),
+            ("Tomas Novotny", 21, "climbing walls, literally", "CZ", .sagittarius, ["climbing", "hiking", "food"], false, .man),
+            ("Isla Fraser", 19, "playlist curator, professionally nosy", "GB", .cancer, ["music", "books", "film"], false, .woman),
+            ("Yusuf Demir", 22, "chess in the park, every Sunday", "TR", .libra, ["chess", "coffee", "travel"], false, .man),
+            ("Nina Petrova", 20, "ballet then burgers", "RU", .scorpio, ["dance", "food", "art"], false, .woman)
         ]
 
         return seeds.enumerated().map { index, seed in
@@ -69,7 +76,7 @@ enum MockData {
                 name: seed.0,
                 age: seed.1,
                 bio: seed.2,
-                countryFlag: seed.3,
+                countryCode: seed.3,
                 zodiac: seed.4,
                 interests: seed.5,
                 isVerified: seed.6,
@@ -86,9 +93,9 @@ enum MockData {
             // (profile index, folder, unread, [(text, isFromMe, minutes ago)])
             (0, .messages, 2, [
                 ("heyy how's your week going", false, 180),
-                ("honestly chaotic 😂 yours?", true, 174),
+                ("honestly chaotic, yours?", true, 174),
                 ("same tbh. what are you up to this weekend?", false, 12),
-                ("nothing planned yet 👀", false, 8)
+                ("nothing planned yet, tempt me", false, 8)
             ]),
             (2, .messages, 0, [
                 ("ok but your film takes are unhinged", true, 1_440),
@@ -105,7 +112,7 @@ enum MockData {
                 ("jealous. I was asleep", true, 2_870)
             ]),
             (9, .requests, 1, [
-                ("hey! saw we both like cooking 👋", false, 300)
+                ("hey! saw we both like cooking", false, 300)
             ]),
             (16, .requests, 1, [
                 ("your profile made me laugh", false, 900)
@@ -148,17 +155,42 @@ enum MockData {
     }
 
     private static func seedDailyRewards(_ context: ModelContext) {
-        let rewards: [(Int, String, Int)] = [
-            (1, "5 coins", 5),
-            (2, "8 coins", 8),
-            (3, "1 super chat", 0),
-            (4, "15 coins", 15),
-            (5, "20 coins", 20),
-            (6, "1 boost", 0),
-            (7, "50 coins", 50)
+        let rewards: [(Int, String, Int, BoosterKind?)] = [
+            (1, "5 coins", 5, nil),
+            (2, "8 coins", 8, nil),
+            (3, "1 super chat", 0, .superChat),
+            (4, "15 coins", 15, nil),
+            (5, "20 coins", 20, nil),
+            (6, "1 boost", 0, .boost),
+            (7, "50 coins", 50, nil)
         ]
-        for (day, label, coins) in rewards {
-            context.insert(DailyReward(day: day, rewardLabel: label, coinValue: coins))
+        for (day, label, coins, booster) in rewards {
+            context.insert(DailyReward(day: day, rewardLabel: label, coinValue: coins, boosterKind: booster))
+        }
+    }
+
+    // MARK: - UI test support
+
+    /// Two solid-colour photos for EVERY profile, so whichever card is on
+    /// top, UI tests exercise multi-photo paging and the safety-menu hit
+    /// target (the paging overlay once swallowed it — FINDINGS §4).
+    private static func seedUITestPhotos(_ context: ModelContext, profiles: [UserProfile]) {
+        let colors: [UIColor] = [.systemOrange, .systemPink]
+        let size = CGSize(width: 405, height: 540)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+
+        let datas: [Data] = colors.compactMap { color in
+            UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+                color.setFill()
+                ctx.fill(CGRect(origin: .zero, size: size))
+            }.jpegData(compressionQuality: 0.7)
+        }
+
+        for profile in profiles {
+            for (index, data) in datas.enumerated() {
+                context.insert(ProfilePhoto(data: data, sortIndex: index, owner: profile))
+            }
         }
     }
 
@@ -180,7 +212,7 @@ enum MockData {
             name: "Jordan",
             age: 18,
             bio: "just here for the vibes",
-            countryFlag: "🇦🇺",
+            countryCode: "AU",
             zodiac: .aquarius,
             interests: ["music", "gaming", "gym"],
             isVerified: true,
@@ -192,8 +224,9 @@ enum MockData {
         me.seeking = [.everyone]
         me.city = "Sydney"
         me.country = "Australia"
-        me.countryCode = "AU"
+        me.ownerProviderID = "preview-user"
         container.mainContext.insert(me)
+        container.mainContext.insert(Wallet(coins: 120))
         try? container.mainContext.save()
 
         return container

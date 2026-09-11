@@ -29,15 +29,22 @@ final class DailyReward {
     @Attribute(.unique) var day: Int
     var rewardLabel: String
     var coinValue: Int
+    /// Set for days whose reward is a booster rather than coins.
+    var boosterKindRaw: String?
     var isClaimed: Bool
     var claimedAt: Date?
 
-    init(day: Int, rewardLabel: String, coinValue: Int, isClaimed: Bool = false) {
+    init(day: Int, rewardLabel: String, coinValue: Int, boosterKind: BoosterKind? = nil, isClaimed: Bool = false) {
         self.day = day
         self.rewardLabel = rewardLabel
         self.coinValue = coinValue
+        self.boosterKindRaw = boosterKind?.rawValue
         self.isClaimed = isClaimed
         self.claimedAt = nil
+    }
+
+    var boosterKind: BoosterKind? {
+        boosterKindRaw.flatMap(BoosterKind.init(rawValue:))
     }
 }
 
@@ -46,28 +53,71 @@ final class DailyReward {
 final class Wallet {
     @Attribute(.unique) var id: String
     var coins: Int
-    var isSubscriber: Bool
     var referralCodeUsed: String?
+    /// Consecutive-day claim streak. A skipped day resets it.
+    var currentStreak: Int
+    var lastClaimAt: Date?
 
-    init(id: String = "primary", coins: Int = 0, isSubscriber: Bool = false) {
+    init(id: String = "primary", coins: Int = 0) {
         self.id = id
         self.coins = coins
-        self.isSubscriber = isSubscriber
         self.referralCodeUsed = nil
+        self.currentStreak = 0
+        self.lastClaimAt = nil
     }
 }
 
-/// Non-persisted description of a coin bundle in the store.
-struct CoinPack: Identifiable, Hashable {
-    let id = UUID()
-    let coins: Int
-    let price: String
-    let discountPercent: Int?
+/// One day's bingo board: nine face-down tiles, pick three, pay once to
+/// claim all three. Seeded deterministically from the date so force-quitting
+/// can never re-roll it.
+@Model
+final class BingoBoard {
+    /// "yyyy-MM-dd" — one board per calendar day.
+    @Attribute(.unique) var dateKey: String
+    /// Reward per tile, index 0–8. Encoded as "coins:25" / "booster:boost".
+    var tileRewards: [String]
+    var pickedIndexes: [Int]
+    var isClaimed: Bool
 
-    static let catalog: [CoinPack] = [
-        CoinPack(coins: 225, price: "$4.99", discountPercent: nil),
-        CoinPack(coins: 475, price: "$9.99", discountPercent: 6),
-        CoinPack(coins: 1_000, price: "$19.99", discountPercent: 10),
-        CoinPack(coins: 2_750, price: "$49.99", discountPercent: 19)
-    ]
+    init(dateKey: String, tileRewards: [String]) {
+        self.dateKey = dateKey
+        self.tileRewards = tileRewards
+        self.pickedIndexes = []
+        self.isClaimed = false
+    }
+}
+
+/// A decoded bingo tile reward.
+enum BingoReward: Equatable {
+    case coins(Int)
+    case booster(BoosterKind)
+
+    var encoded: String {
+        switch self {
+        case .coins(let value): "coins:\(value)"
+        case .booster(let kind): "booster:\(kind.rawValue)"
+        }
+    }
+
+    init?(encoded: String) {
+        let parts = encoded.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        switch parts[0] {
+        case "coins":
+            guard let value = Int(parts[1]) else { return nil }
+            self = .coins(value)
+        case "booster":
+            guard let kind = BoosterKind(rawValue: parts[1]) else { return nil }
+            self = .booster(kind)
+        default:
+            return nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .coins(let value): "\(value) coins"
+        case .booster(let kind): "1 \(kind.label)"
+        }
+    }
 }

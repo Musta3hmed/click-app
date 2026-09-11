@@ -26,18 +26,23 @@ struct ChatsView: View {
                         FolderTabs(selection: $folder, badgedFolders: badgedFolders)
                             .padding(.top, 18)
 
-                        if visibleConversations.isEmpty {
-                            EmptyChatsState(onlineCount: candidates.count * 547)
-                                .padding(.top, 40)
-                        } else {
-                            conversationList
+                        // The list itself scrolls — without this only the
+                        // first few rows were reachable on a small screen.
+                        ScrollView {
+                            if visibleConversations.isEmpty {
+                                EmptyChatsState(onlineCount: candidates.count * 547)
+                                    .padding(.top, 40)
+                            } else {
+                                conversationList
+                            }
                         }
+                        .scrollIndicators(.hidden)
                     }
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.background)
-            .ignoresSafeArea(edges: .top)
+
             .navigationDestination(for: Conversation.self) { conversation in
                 ConversationView(conversation: conversation)
                     .navigationTransition(.zoom(sourceID: conversation.id, in: zoom))
@@ -192,9 +197,15 @@ private struct ConversationRow: View {
                     .foregroundStyle(Theme.secondary)
 
                 if conversation.unreadCount > 0 && conversation.participant?.isMuted != true {
-                    Circle()
-                        .fill(Theme.accent)
-                        .frame(width: 10, height: 10)
+                    // The count, not a bare dot — 8 unread should look
+                    // different from 1.
+                    Text(conversation.unreadCount > 99 ? "99+" : "\(conversation.unreadCount)")
+                        .font(.clickPlain(.caption2, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.accent, in: Capsule())
+                        .accessibilityLabel("\(conversation.unreadCount) unread")
                 }
             }
 

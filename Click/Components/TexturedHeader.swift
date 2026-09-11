@@ -23,29 +23,33 @@ struct TexturedHeader<Trailing: View>: View {
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Theme.headerGradient
+        // The usable band is a fixed 148pt BELOW the safe area, so the
+        // header reads the same on an SE (small inset) and a Pro Max
+        // (Dynamic Island) instead of being squashed by the bigger inset.
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.click(.largeTitle, weight: .heavy))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
 
-            switch texture {
-            case .clouds: CloudTexture()
-            case .water: WaterTexture()
-            }
+            Spacer(minLength: Theme.Metric.gutter)
 
-            HStack(alignment: .center) {
-                Text(title)
-                    .font(.click(.largeTitle, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
-
-                Spacer(minLength: Theme.Metric.gutter)
-
-                trailing()
-            }
-            .padding(.horizontal, Theme.Metric.gutter)
-            .padding(.bottom, Theme.Metric.sheetOverlap + 12)
+            trailing()
         }
-        .frame(height: 188)
-        .ignoresSafeArea(edges: .top)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .padding(.bottom, Theme.Metric.sheetOverlap + 12)
+        .frame(maxWidth: .infinity, alignment: .bottomLeading)
+        .frame(height: 148, alignment: .bottom)
+        .background {
+            ZStack {
+                Theme.headerGradient
+                switch texture {
+                case .clouds: CloudTexture()
+                case .water: WaterTexture()
+                }
+            }
+            .ignoresSafeArea(edges: .top)
+        }
     }
 }
 
@@ -162,7 +166,7 @@ struct GlassCircleButton: View {
             GlassCapsule {
                 Image(systemName: "gauge.with.needle").foregroundStyle(.orange)
                 Image(systemName: "bolt.fill").foregroundStyle(.purple)
-                Image(systemName: "hexagon.fill").foregroundStyle(Theme.coin)
+                CoinView(size: 18)
             }
             .font(.system(size: 16, weight: .bold))
         }

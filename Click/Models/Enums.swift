@@ -135,21 +135,4 @@ enum Zodiac: String, CaseIterable, Codable {
     case libra, scorpio, sagittarius, capricorn, aquarius, pisces
 
     var label: String { rawValue.capitalized }
-
-    var symbol: String {
-        switch self {
-        case .aries: "♈️"
-        case .taurus: "♉️"
-        case .gemini: "♊️"
-        case .cancer: "♋️"
-        case .leo: "♌️"
-        case .virgo: "♍️"
-        case .libra: "♎️"
-        case .scorpio: "♏️"
-        case .sagittarius: "♐️"
-        case .capricorn: "♑️"
-        case .aquarius: "♒️"
-        case .pisces: "♓️"
-        }
-    }
 }

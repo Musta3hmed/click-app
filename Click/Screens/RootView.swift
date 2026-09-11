@@ -42,10 +42,19 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.4), value: onboardingCompleted)
     }
 
-    /// Shown for the instant it takes to read the Keychain — brand wash so
-    /// there is no white flash before WelcomeView.
+    /// Shown while the Keychain (and, with real Apple auth, a bounded
+    /// network check) restores the session. Logo + spinner, not a bare
+    /// gradient — restore can take a moment on weak signal.
     private var launchPlaceholder: some View {
-        Theme.brandGradient.ignoresSafeArea()
+        ZStack {
+            Theme.brandGradient.ignoresSafeArea()
+            VStack(spacing: 20) {
+                ClickLogoView(size: 96)
+                ProgressView()
+                    .tint(.white)
+            }
+        }
+        .accessibilityLabel("Click is starting")
     }
 
     private var mainShell: some View {
@@ -62,10 +71,38 @@ struct RootView: View {
             .transition(.opacity)
 
             FloatingTabBar(selection: $selection, badges: badges)
+                // Real margin on devices without a home indicator (SE).
+                .padding(.bottom, 10)
         }
         .task {
             MockData.seedIfNeeded(context)
+            await DemoPhotos.seedIfNeeded(context)
         }
+        .sheet(isPresented: welcomeSheetBinding) {
+            WelcomeCelebrationView(name: currentUserName) {
+                selection = .swipe
+                welcomePopupShown = true
+            }
+        }
+    }
+
+    // MARK: - First-run welcome popup
+
+    @AppStorage("welcomePopupShown") private var welcomePopupShown = false
+
+    /// Fires exactly once: the first arrival in the shell after onboarding.
+    private var welcomeSheetBinding: Binding<Bool> {
+        Binding(
+            get: { onboardingCompleted && !welcomePopupShown },
+            set: { showing in if !showing { welcomePopupShown = true } }
+        )
+    }
+
+    private var currentUserName: String {
+        let descriptor = FetchDescriptor<UserProfile>(
+            predicate: #Predicate { $0.isCurrentUser }
+        )
+        return (try? context.fetch(descriptor))?.first?.name ?? ""
     }
 
     private var badges: [AppTab: Int] {

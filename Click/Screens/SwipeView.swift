@@ -7,12 +7,17 @@
 //  next card scales up to meet it. The deck is filtered by the signed-in
 //  user's "who I want to meet" answer. Blocked profiles never enter it.
 //
+//  Layout note: everything below the header scrolls, and the card sizes
+//  itself with an aspect ratio — a fixed card height overflowed an iPhone
+//  SE by ~179pt and pushed the composer off-screen entirely.
+//
 
 import SwiftUI
 import SwiftData
 
 struct SwipeView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Query(
         filter: #Predicate<UserProfile> { !$0.isCurrentUser && !$0.isBlocked },
@@ -51,18 +56,20 @@ struct SwipeView: View {
             }
 
             OverlappingSheet {
-                VStack(spacing: 14) {
-                    cardArea
-                    actionRow
-                    composer
+                ScrollView {
+                    VStack(spacing: 14) {
+                        cardArea
+                        actionRow
+                        composer
+                    }
+                    .padding(.top, 20)
+                    .padding(.bottom, Theme.Metric.tabBarClearance)
                 }
-                .padding(.top, 20)
-                .padding(.bottom, Theme.Metric.tabBarClearance)
+                .scrollDismissesKeyboard(.interactively)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
-        .ignoresSafeArea(edges: .top)
         .overlay(alignment: .bottom) { toastView }
         .overlay { celebrationOverlay }
         .sensoryFeedback(.success, trigger: celebrating != nil) { _, new in new }
@@ -111,13 +118,16 @@ struct SwipeView: View {
                             }
                         }
                         .gesture(offset == 0 ? dragGesture : nil)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: drag)
                         .allowsHitTesting(offset == 0)
+                        // Back cards are visual context only — VoiceOver must
+                        // not read three profiles at once.
+                        .accessibilityHidden(offset != 0)
                 }
             }
         }
+        // Proportional, not fixed: fits an SE and a Pro Max alike.
+        .aspectRatio(0.72, contentMode: .fit)
         .frame(maxWidth: .infinity)
-        .frame(height: 440)
         .padding(.horizontal, Theme.Metric.gutter)
     }
 
@@ -144,8 +154,7 @@ struct SwipeView: View {
 
     private func stamp(text: String, color: Color, baseRotation: Double) -> some View {
         Text(text)
-            .font(.system(size: 38, weight: .black, design: .rounded))
-            .italic()
+            .font(.click(.largeTitle, weight: .black))
             .foregroundStyle(color)
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
@@ -161,6 +170,8 @@ struct SwipeView: View {
     private var dragGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                // Direct 1:1 finger tracking — an implicit .animation here
+                // once overrode the explicit fly-off (FINDINGS §42).
                 drag = value.translation
             }
             .onEnded { value in
@@ -284,7 +295,7 @@ struct SwipeView: View {
 
         // Arc-and-fade fly-off: out horizontally, up, extra rotation, fade.
         flyingAway = true
-        withAnimation(.easeOut(duration: 0.32)) {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.32)) {
             drag = CGSize(width: liked ? 640 : -640, height: -180)
         }
 
@@ -297,11 +308,17 @@ struct SwipeView: View {
         lastSwipedIndex = topIndex
         let mutual = liked && Self.likesYouBack(profile)
 
-        // Let the fly-off play before the next card becomes active.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-            topIndex += 1
-            drag = .zero
-            flyingAway = false
+        // Let the fly-off play, then swap cards with animations OFF so the
+        // incoming card does not inherit drag = 640 and spring in from
+        // off-screen (FINDINGS §42).
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.16 : 0.32)) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                topIndex += 1
+                drag = .zero
+                flyingAway = false
+            }
             if mutual {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
                     celebrating = profile
@@ -371,7 +388,11 @@ struct SwipeView: View {
                     celebrating = nil
                 }
             }
-            .transition(.opacity.combined(with: .scale(scale: 1.08)))
+            .transition(
+                reduceMotion
+                    ? AnyTransition.opacity
+                    : AnyTransition.opacity.combined(with: .scale(scale: 1.08))
+            )
         }
     }
 }
@@ -383,7 +404,9 @@ private struct MatchCelebrationView: View {
     let myName: String
     let onDismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
+    @AccessibilityFocusState private var headingFocused: Bool
 
     var body: some View {
         ZStack {
@@ -391,7 +414,9 @@ private struct MatchCelebrationView: View {
                 .ignoresSafeArea()
                 .opacity(0.96)
 
-            ConfettiView()
+            if !reduceMotion {
+                ConfettiView()
+            }
 
             VStack(spacing: 24) {
                 Spacer()
@@ -406,10 +431,12 @@ private struct MatchCelebrationView: View {
                 }
 
                 Text("IT CLICKED!")
-                    .font(.system(size: 44, design: .rounded).weight(.black).italic())
+                    .font(.system(.largeTitle, design: .rounded).weight(.black).italic())
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
                     .scaleEffect(appeared ? 1 : 0.6)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($headingFocused)
 
                 Text("\(profile.name.split(separator: " ").first.map(String.init) ?? profile.name) likes you too")
                     .font(.clickPlain(.headline, weight: .semibold))
@@ -434,10 +461,18 @@ private struct MatchCelebrationView: View {
             }
         }
         .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.6).delay(0.1)) {
+            withAnimation(
+                reduceMotion
+                    ? .easeInOut(duration: 0.2)
+                    : .spring(response: 0.55, dampingFraction: 0.6).delay(0.1)
+            ) {
                 appeared = true
             }
+            headingFocused = true
         }
+        // A full-screen takeover: VoiceOver must not walk into the deck
+        // behind it.
+        .accessibilityAddTraits(.isModal)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("It's a match with \(profile.name)")
     }
@@ -465,6 +500,15 @@ private struct SwipeCard: View {
                 endPoint: .bottom
             )
 
+            // Photo paging FIRST in the stack, so the controls that follow
+            // (safety menu especially) hit-test ABOVE it. The tap zones also
+            // start below the top band, ceding the corner controls
+            // (FINDINGS §4: on 2+ photo cards the old overlay swallowed the
+            // report/block menu).
+            if photos.count > 1 {
+                pagingTapZones
+            }
+
             infoBlock
 
             if photos.count > 1 {
@@ -480,29 +524,41 @@ private struct SwipeCard: View {
             }
 
             SafetyMenu(profile: profile)
-                .padding(10)
+                .padding(6)
                 .background(.ultraThinMaterial, in: Circle())
                 .padding(.top, photos.count > 1 ? 18 : 0)
-                .padding(14)
+                .padding(10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous))
         .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
-        // Tap left/right thirds to page photos, stories-style.
-        .overlay {
-            if photos.count > 1 {
-                HStack(spacing: 0) {
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onTapGesture { page(-1) }
-                    Rectangle().fill(.clear)
-                        .allowsHitTesting(false)
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onTapGesture { page(1) }
-                }
-            }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(profile.name), \(profile.displayAge). \(profile.bio)")
+        .accessibilityValue(photos.count > 1 ? "Photo \(photoIndex + 1) of \(photos.count)" : "")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: page(1)
+            case .decrement: page(-1)
+            @unknown default: break
+            }
+        }
+    }
+
+    /// Left/right thirds page the photos; the top 88pt is left alone so the
+    /// safety menu, online pill and progress bar stay tappable.
+    private var pagingTapZones: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 88)
+            HStack(spacing: 0) {
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onTapGesture { page(-1) }
+                Rectangle().fill(.clear)
+                    .allowsHitTesting(false)
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onTapGesture { page(1) }
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -517,7 +573,7 @@ private struct SwipeCard: View {
             }
             .transition(.opacity)
         } else {
-            // No photos yet (all seeded profiles): keep the gradient look.
+            // No photos yet: keep the gradient look.
             LinearGradient(
                 colors: gradientColors,
                 startPoint: .topLeading,
@@ -553,8 +609,10 @@ private struct SwipeCard: View {
                 .lineLimit(2)
 
             HStack(spacing: 6) {
-                Text(profile.countryFlag)
-                Text(profile.zodiac.symbol)
+                CountryBadge(code: profile.countryCode, onDark: true)
+                Text(profile.zodiac.label)
+                    .font(.clickPlain(.caption, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
                 ForEach(profile.interests.prefix(3), id: \.self) { interest in
                     Text(interest)
                         .font(.clickPlain(.caption, weight: .semibold))
@@ -635,7 +693,7 @@ private struct DeckExhaustedState: View {
                 .padding(.top, 8)
         }
         .padding(Theme.Metric.gutter)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
