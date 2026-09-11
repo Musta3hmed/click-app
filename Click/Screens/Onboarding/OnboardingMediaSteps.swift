@@ -93,11 +93,11 @@ struct PhotosStep: View {
     }
 
     private var addTile: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
             .strokeBorder(Theme.separator, style: StrokeStyle(lineWidth: 2, dash: [6]))
             .background(
                 Theme.surface,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                in: RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
             )
             .overlay {
                 Image(systemName: "plus")
@@ -192,7 +192,7 @@ private struct PhotoCell: View {
             }
         }
         .aspectRatio(3.0 / 4.0, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onDelete) {
                 Image(systemName: "xmark.circle.fill")

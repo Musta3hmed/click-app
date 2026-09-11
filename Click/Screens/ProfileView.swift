@@ -463,10 +463,10 @@ private struct DailyRewardCard: View {
         .padding(.top, 12)
         .frame(width: 104)
         .background(canCollect ? Theme.surface : Theme.fillDisabled.opacity(0.75))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous))
         .overlay {
             if canCollect {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
                     .strokeBorder(Theme.primary, lineWidth: 2)
             }
         }

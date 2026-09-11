@@ -24,7 +24,7 @@ struct CountryBadge: View {
                 .padding(.vertical, 3)
                 .background(
                     onDark ? AnyShapeStyle(.white.opacity(0.22)) : AnyShapeStyle(Theme.separator.opacity(0.6)),
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: Theme.Metric.badge, style: .continuous)
                 )
                 .accessibilityLabel(countryName)
         }

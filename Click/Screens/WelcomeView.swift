@@ -346,7 +346,7 @@ private struct ChatSticker: View {
             .foregroundStyle(tint == .white ? .black : .white)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .background(tint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(tint, in: RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous))
             .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
     }
 }
@@ -360,7 +360,7 @@ private struct SymbolSticker: View {
             .font(.system(size: 28, weight: .bold))
             .foregroundStyle(tint)
             .padding(12)
-            .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(.white, in: RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous))
             .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
     }
 }
