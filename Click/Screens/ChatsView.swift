@@ -126,7 +126,6 @@ struct ChatsView: View {
                             .foregroundStyle(.white)
                             .contentTransition(.numericText())
                     }
-                    .font(.system(size: 16, weight: .bold))
                 }
                 .buttonStyle(.clickSilent)
                 .accessibilityLabel("\(wallets.first?.coins ?? 0) coins\(me?.isBoosted == true ? ", boost active" : "")")

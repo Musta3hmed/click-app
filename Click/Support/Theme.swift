@@ -219,11 +219,42 @@ enum Theme {
         static let tile: CGFloat = 16
         /// Small chips, toasts, stamps.
         static let chip: CGFloat = 12
+        /// Decision stamps (LIKE/NOPE frame).
+        static let stamp: CGFloat = 10
+        /// Tiny badges (counts, dots).
+        static let badge: CGFloat = 6
         static let gutter: CGFloat = 16
         static let sheetOverlap: CGFloat = 24
         /// Height reserved at the bottom of scroll views so the floating
         /// tab bar never covers the last row.
         static let tabBarClearance: CGFloat = 96
+        /// One primary-button height, everywhere.
+        static let primaryButton: CGFloat = 52
+        /// Sheet content starts this far below the sheet edge on every tab.
+        static let sheetTopInset: CGFloat = 20
+
+        /// 4pt spacing grid, seven stops. Map every raw padding to the
+        /// nearest stop.
+        enum Space {
+            static let xs: CGFloat = 4
+            static let s: CGFloat = 8
+            static let m: CGFloat = 12
+            static let l: CGFloat = 16   // == gutter
+            static let xl: CGFloat = 20
+            static let xxl: CGFloat = 28
+            static let xxxl: CGFloat = 40
+        }
+
+        /// Glyph size stops. Use with @ScaledMetric at the call site so
+        /// icons track Dynamic Type:
+        /// `@ScaledMetric(relativeTo: .body) var glyph = Theme.Metric.GlyphSize.m`
+        enum GlyphSize {
+            static let xs: CGFloat = 12
+            static let s: CGFloat = 16
+            static let m: CGFloat = 20
+            static let l: CGFloat = 26
+            static let xl: CGFloat = 52
+        }
     }
 }
 

@@ -4,9 +4,9 @@
 //
 //  Cut-out style avatar with a thick white outline and drop shadow.
 //
-//  There are no photo assets in the project, so avatars render as initials
-//  on a deterministic gradient derived from the name. Swap `avatarBody` for
-//  an AsyncImage once real photos exist.
+//  Renders the provided photo when one exists (the current user's main
+//  profile photo, for example); otherwise falls back to initials on a
+//  deterministic gradient derived from the name.
 //
 
 import SwiftUI

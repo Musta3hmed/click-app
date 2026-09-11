@@ -27,6 +27,22 @@ jobs:
             exit 1
           fi
 
+      # The Click motion system: every animation curve is a Theme.Motion
+      # token resolved through ClickMotion. A raw curve anywhere else is a
+      # build failure, not a review comment.
+      - name: Ban animation curves outside the motion system
+        run: |
+          set -e
+          MATCHES=$(grep -rnE 'spring\(response|easeInOut\(duration|easeOut\(duration|\.snappy|\.bouncy|interpolatingSpring' \
+            Click --include='*.swift' \
+            | grep -v 'Click/Support/Theme.swift' \
+            | grep -v 'Click/Support/ClickMotion.swift' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Animation curves must be declared in Theme.Motion / ClickMotion only:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
       - name: Select newest Xcode
         run: |
           ls /Applications | grep -i xcode || true
@@ -41,4 +57,24 @@ jobs:
             -scheme Click \
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+      # CI used to run zero tests. The unit suite executes here; UI tests
+      # still need a Mac with a booted simulator and stay manual for now.
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')
+          if [ -z "$DEVICE" ]; then
+            echo "No iPhone simulator available on this runner"; exit 1
+          fi
+          echo "Testing on: $DEVICE"
+          xcodebuild test-without-building \
+            -project Click.xcodeproj \
+            -scheme Click \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -configuration Debug \
+            -derivedDataPath build \
+            -only-testing:ClickTests \
             CODE_SIGNING_ALLOWED=NO

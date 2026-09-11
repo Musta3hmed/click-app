@@ -111,7 +111,6 @@ struct ProfileView: View {
                         .contentTransition(.numericText())
                         .animation(motion.numeric, value: wallet?.coins ?? 0)
                 }
-                .font(.system(size: 15, weight: .bold))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(wallet?.coins ?? 0) coins")
 

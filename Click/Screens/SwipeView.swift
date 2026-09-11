@@ -149,7 +149,6 @@ struct SwipeView: View {
                             .font(.click(.footnote, weight: .heavy))
                             .foregroundStyle(.white)
                     }
-                    .font(.system(size: 14, weight: .bold))
                 }
                 .buttonStyle(.clickSilent)
                 .accessibilityLabel("Filters")
@@ -623,7 +622,6 @@ private struct BoostBadge: View {
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
-        .font(.system(size: 14, weight: .bold))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Boost active")
         .accessibilityValue("about \(max(1, Int(until.timeIntervalSinceNow / 60))) minutes remaining")

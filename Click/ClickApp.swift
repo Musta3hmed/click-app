@@ -1,7 +1,9 @@
 //
 //  ClickApp.swift
 //  Click
-//  Click app entry point.
+//
+//  App entry point: model container + appearance override.
+//
 
 import SwiftUI
 import SwiftData

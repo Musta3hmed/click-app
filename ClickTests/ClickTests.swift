@@ -189,4 +189,134 @@ struct ClickModelTests {
         profile.zodiac = .leo
         #expect(profile.zodiacRaw == "leo")
     }
+
+    // MARK: - Phase 4
+
+    @Test func zodiacDerivesFromBirthDate() {
+        var components = DateComponents()
+        components.year = 2000
+
+        func date(month: Int, day: Int) -> Date {
+            components.month = month
+            components.day = day
+            return Calendar.current.date(from: components)!
+        }
+
+        #expect(Zodiac.from(birthDate: date(month: 3, day: 21)) == .aries)
+        #expect(Zodiac.from(birthDate: date(month: 4, day: 19)) == .aries)
+        #expect(Zodiac.from(birthDate: date(month: 4, day: 20)) == .taurus)
+        #expect(Zodiac.from(birthDate: date(month: 8, day: 1)) == .leo)
+        #expect(Zodiac.from(birthDate: date(month: 12, day: 25)) == .capricorn)
+        #expect(Zodiac.from(birthDate: date(month: 1, day: 19)) == .capricorn)
+        #expect(Zodiac.from(birthDate: date(month: 1, day: 20)) == .aquarius)
+        #expect(Zodiac.from(birthDate: date(month: 3, day: 1)) == .pisces)
+    }
+
+    @Test func welcomeBonusGrantedOnWalletCreation() throws {
+        let context = try makeContext()
+        let wallet = Wallet.ensure(in: context)
+        #expect(wallet.coins == Wallet.welcomeBonus, "Day-1 economy needs the welcome bonus")
+
+        // ensure() must not grant twice.
+        let again = Wallet.ensure(in: context)
+        #expect(again.coins == Wallet.welcomeBonus)
+    }
+
+    @Test func boostActivationConsumesInventoryAndCaps() throws {
+        let context = try makeContext()
+        let me = UserProfile(name: "Someone", age: 20, isCurrentUser: true)
+        context.insert(me)
+
+        // No inventory: activation fails, nothing changes.
+        #expect(!Boost.activate(for: me, in: context))
+        #expect(me.boostedUntil == nil)
+
+        BoosterInventory.ensure(.boost, in: context).count = 3
+        #expect(Boost.activate(for: me, in: context))
+        let first = try #require(me.boostedUntil)
+        #expect(first.timeIntervalSinceNow > 29 * 60)
+
+        // Re-use extends but is capped at 2x duration from now.
+        #expect(Boost.activate(for: me, in: context))
+        #expect(Boost.activate(for: me, in: context))
+        let capped = try #require(me.boostedUntil)
+        #expect(capped.timeIntervalSinceNow <= 60 * 60 + 1)
+        #expect(BoosterInventory.ensure(.boost, in: context).count == 0)
+    }
+
+    @Test func boostWidensLikesYouBackRate() {
+        let names = (0..<200).map { "Person \($0)" }
+        let normal = names.filter {
+            Boost.likesYouBack(UserProfile(name: $0, age: 20), boosted: false)
+        }.count
+        let boosted = names.filter {
+            Boost.likesYouBack(UserProfile(name: $0, age: 20), boosted: true)
+        }.count
+        #expect(boosted > normal, "Boost should widen the mock match rate")
+    }
+
+    @Test func legacyRequestRowsReadAsPending() throws {
+        // Phase-3 rows predate request states: incoming-only .requests rows
+        // must get the accept/deny flow.
+        let context = try makeContext()
+        let profile = UserProfile(name: "Test Person", age: 20)
+        context.insert(profile)
+
+        let legacy = Conversation(participant: profile, folder: .requests)
+        context.insert(legacy)
+        context.insert(Message(text: "hi", isFromMe: false, conversation: legacy))
+        try context.save()
+        #expect(legacy.isPendingRequest)
+
+        // A row the user already replied to is not pending.
+        context.insert(Message(text: "hey", isFromMe: true, conversation: legacy))
+        try context.save()
+        #expect(!legacy.isPendingRequest)
+
+        // Denied/accepted rows never re-enter the flow.
+        let accepted = Conversation(participant: profile, folder: .requests, requestState: .accepted)
+        context.insert(accepted)
+        #expect(!accepted.isPendingRequest)
+    }
+
+    @Test func superLikeRequestsAreSeeded() throws {
+        let context = try makeContext()
+        MockData.seedIfNeeded(context)
+
+        let pendingRaw = RequestState.pending.rawValue
+        let pending = try context.fetch(FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.isSuperLike && $0.requestStateRaw == pendingRaw }
+        ))
+        #expect(pending.count >= 2, "The accept/deny flow needs seeded requests to exercise")
+        #expect(pending.allSatisfy { $0.folder == .requests })
+
+        // Seeding again must not stack more.
+        MockData.seedIfNeeded(context)
+        let after = try context.fetch(FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.isSuperLike && $0.requestStateRaw == pendingRaw }
+        ))
+        #expect(after.count == pending.count)
+    }
+
+    @Test func messageSeedsWaitForFirstLike() throws {
+        let context = try makeContext()
+        MockData.seedIfNeeded(context)
+
+        // Before any like: only super-like requests exist, no .messages
+        // conversations — the "no chats yet" state can actually appear.
+        let messagesRaw = ChatFolder.messages.rawValue
+        let messageThreads = FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.folderRaw == messagesRaw }
+        )
+        #expect(try context.fetchCount(messageThreads) == 0)
+
+        // After a like, the next seeding pass delivers the demo chats.
+        let candidate = try #require(try context.fetch(
+            FetchDescriptor<UserProfile>(predicate: #Predicate { !$0.isCurrentUser })
+        ).first)
+        context.insert(Match(profile: candidate))
+        try context.save()
+        MockData.seedIfNeeded(context)
+        #expect(try context.fetchCount(messageThreads) > 0)
+    }
 }

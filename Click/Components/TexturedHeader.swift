@@ -129,13 +129,18 @@ private struct WaterTexture: View {
 // MARK: - Glass capsule
 
 /// Frosted capsule that groups small header actions, as in the reference.
+/// Sets its own glyph size — the three tabs used to override it with
+/// three different values.
 struct GlassCapsule<Content: View>: View {
     @ViewBuilder var content: () -> Content
+
+    @ScaledMetric(relativeTo: .callout) private var glyphSize = Theme.Metric.GlyphSize.s
 
     var body: some View {
         HStack(spacing: 14) {
             content()
         }
+        .font(.system(size: glyphSize, weight: .bold))
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         // The header stays warm in dark mode, but .ultraThinMaterial flips

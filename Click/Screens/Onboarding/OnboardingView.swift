@@ -432,7 +432,7 @@ private struct BirthDateStep: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showingRejection)
+        .animation(Theme.Motion.screenFade, value: showingRejection)
         .onAppear {
             // Resuming the step with a stored under-18 date lands on the
             // terminal card, not a live picker.
