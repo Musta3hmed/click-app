@@ -33,9 +33,29 @@ extension Color {
 
 enum Theme {
 
-    // Header gradient. Stays blue in both modes — it sits behind white text.
-    static let headerTop = Color(hex: 0x3BB8F5)
-    static let headerBottom = Color(hex: 0x7FD4F7)
+    // MARK: Brand
+    // Click's identity: the warm orange → pink of the logo. One identity,
+    // everywhere — headers, welcome screen, celebration moments.
+
+    static let brandOrange = Color(hex: 0xFFA24C)
+    static let brandCoral = Color(hex: 0xFF6A4D)
+    static let brandPink = Color(hex: 0xFF2D62)
+    static let brandGold = Color(hex: 0xFFD36E)
+    static let brandMagenta = Color(hex: 0xFF2D8F)
+    static let brandViolet = Color(hex: 0x8A2BE2)
+
+    /// Full three-stop brand wash, for hero surfaces (welcome, match overlay).
+    static var brandGradient: LinearGradient {
+        LinearGradient(
+            colors: [brandOrange, brandCoral, brandPink],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    // Header gradient. Same hue in both modes — it sits behind white text.
+    static let headerTop = Color(hex: 0xFF9A4C)
+    static let headerBottom = Color(hex: 0xFF4D67)
 
     static var headerGradient: LinearGradient {
         LinearGradient(
