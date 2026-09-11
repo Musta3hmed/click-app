@@ -1,4 +1,4 @@
-# FOMO — Social Media App
+# Click — Social Media App
 
 iOS app built with SwiftUI + SwiftData. Two developers, each running their own
 Claude Code session on their own machine. This file is committed so both
@@ -7,19 +7,17 @@ sessions share the same context and conventions.
 ## Project layout
 
 ```
-Project FOMO - Social Media.xcodeproj   # objectVersion 77 (Xcode 16+)
-Project FOMO - Social Media/            # app sources
-  Project_FOMO___Social_MediaApp.swift  # @main entry, ModelContainer setup
-  ContentView.swift                     # root view
-  Item.swift                            # SwiftData @Model
-  Assets.xcassets/
-Project FOMO - Social MediaTests/       # unit tests
-Project FOMO - Social MediaUITests/      # UI tests
+Click.xcodeproj   # objectVersion 77 (Xcode 16+)
+Click/            # app sources
+  ClickApp.swift  # @main entry, ModelContainer setup
+  Assets.xcassets/  # AppIcon + Logo (brand mark)
+  Components/ Mock/ Models/ Screens/ Support/
+ClickTests/       # unit tests
+ClickUITests/      # UI tests
 ```
 
-The target name contains spaces and hyphens, so the Swift type names use
-underscore-mangled forms (`Project_FOMO___Social_MediaApp`). This is expected —
-do not "fix" it.
+The project was renamed from "Project FOMO - Social Media" to **Click**:
+target, scheme, product, bundle ids (`Jatlas.Click*`), folders and type names.
 
 ## Build
 
@@ -30,8 +28,8 @@ to add a file. Never hand-edit `project.pbxproj`.
 Verify a build from the command line:
 
 ```bash
-xcodebuild -project 'Project FOMO - Social Media.xcodeproj' \
-  -scheme 'Project FOMO - Social Media' \
+xcodebuild -project 'Click.xcodeproj' \
+  -scheme 'Click' \
   -destination 'generic/platform=iOS' \
   -configuration Debug build CODE_SIGNING_ALLOWED=NO
 ```
@@ -65,17 +63,17 @@ can see the other's uncommitted work.
 ## Current state
 
 The app is **Click**, a swipe-to-meet social discovery app. Three tabs behind a
-custom floating tab bar: chats, swipe, profile. All data is local SwiftData with
+custom floating tab bar: chats, swipe, profile — gated behind WelcomeView (animated sign-in screen; mock auth via @AppStorage "isSignedIn"). All data is local SwiftData with
 seeded mock content — there is no backend.
 
-Source layout inside `Project FOMO - Social Media/`:
+Source layout inside `Click/`:
 
 ```
 Support/     Theme.swift (all design tokens), Haptics, SafetyCenter
 Components/  The six reusable views — build new UI from these
 Models/      SwiftData @Model types + AppSchema (schema source of truth)
 Mock/        MockData.swift — replace wholesale when a backend lands
-Screens/     RootView, ChatsView, SwipeView, ProfileView, ConversationView, SettingsView
+Screens/     RootView, WelcomeView (sign-in gate), ChatsView, SwipeView, ProfileView, ConversationView, SettingsView
 ```
 
 Conventions that matter:
@@ -100,7 +98,7 @@ with no "no such module" error to explain it. Check
 `"name": "NO_MODULE"`, the module is empty. Fix:
 
 ```bash
-xcodebuild -project 'Project FOMO - Social Media.xcodeproj' -scheme 'Project FOMO - Social Media' clean
+xcodebuild -project 'Click.xcodeproj' -scheme 'Click' clean
 ```
 
 **The Xcode project was generated with broken template expansion.** The app

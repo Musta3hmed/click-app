@@ -1,11 +1,11 @@
 //
-//  Project_FOMO___Social_MediaUITestsLaunchTests.swift
+//  ClickUITestsLaunchTests.swift
 //  Click
 //
 
 import XCTest
 
-final class Project_FOMO___Social_MediaUITestsLaunchTests: XCTestCase {
+final class ClickUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

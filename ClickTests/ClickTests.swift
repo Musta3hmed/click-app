@@ -1,12 +1,12 @@
 //
-//  Project_FOMO___Social_MediaTests.swift
+//  ClickTests.swift
 //  Click
 //
 
 import Testing
 import Foundation
 import SwiftData
-@testable import Project_FOMO___Social_Media
+@testable import Click
 
 @MainActor
 struct ClickModelTests {
