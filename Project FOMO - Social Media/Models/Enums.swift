@@ -27,13 +27,15 @@ enum BoosterKind: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    var emoji: String {
+    /// SF Symbols rather than emoji: they always render, tint correctly and
+    /// scale with Dynamic Type. Swap for custom artwork when it exists.
+    var systemImage: String {
         switch self {
-        case .boost: "⚡️"
-        case .bulkChat: "💌"
-        case .admirers: "👁️"
-        case .reveal: "🔓"
-        case .superChat: "❤️"
+        case .boost: "bolt.fill"
+        case .bulkChat: "envelope.fill"
+        case .admirers: "eye.fill"
+        case .reveal: "lock.open.fill"
+        case .superChat: "heart.fill"
         }
     }
 }

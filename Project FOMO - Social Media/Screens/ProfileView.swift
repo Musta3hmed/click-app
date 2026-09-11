@@ -146,12 +146,20 @@ struct ProfileView: View {
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                 spacing: 12
             ) {
-                ForEach(boosters) { inventory in
+                ForEach(orderedBoosters) { inventory in
                     BoosterCard(kind: inventory.kind, count: inventory.count) {}
                 }
             }
         }
         .padding(.horizontal, Theme.Metric.gutter)
+    }
+
+    /// The @Query sorts by raw value, which is alphabetical. Present them in
+    /// the order the enum declares instead.
+    private var orderedBoosters: [BoosterInventory] {
+        BoosterKind.allCases.compactMap { kind in
+            boosters.first { $0.kindRaw == kind.rawValue }
+        }
     }
 
     // MARK: - Subscription

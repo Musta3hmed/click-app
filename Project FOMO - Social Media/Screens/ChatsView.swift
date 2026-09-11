@@ -104,13 +104,18 @@ private struct FolderTabs: View {
     let badgedFolders: Set<ChatFolder>
 
     var body: some View {
-        HStack(spacing: 22) {
-            ForEach(ChatFolder.allCases) { item in
-                tab(item)
+        // Horizontally scrollable: the four labels are `fixedSize`, so without
+        // a scroll view they push the whole screen wider than the device at
+        // larger Dynamic Type sizes.
+        ScrollView(.horizontal) {
+            HStack(spacing: 20) {
+                ForEach(ChatFolder.allCases) { item in
+                    tab(item)
+                }
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, Theme.Metric.gutter)
         }
-        .padding(.horizontal, Theme.Metric.gutter)
+        .scrollIndicators(.hidden)
     }
 
     @ViewBuilder
@@ -124,7 +129,7 @@ private struct FolderTabs: View {
             VStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Text(item.label)
-                        .font(.click(.title3, weight: .heavy))
+                        .font(.click(.headline, weight: .heavy))
                         .foregroundStyle(isSelected ? Theme.primary : Theme.secondary)
 
                     if badgedFolders.contains(item) {
@@ -208,8 +213,9 @@ private struct EmptyChatsState: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("🐓")
-                .font(.system(size: 68))
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(Theme.headerTop)
                 .accessibilityHidden(true)
 
             Text("no chats yet")

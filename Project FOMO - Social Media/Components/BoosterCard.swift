@@ -5,15 +5,31 @@
 
 import SwiftUI
 
+extension BoosterKind {
+    /// Icon tint. Lives here rather than on the model so the enum stays
+    /// free of SwiftUI.
+    var tint: Color {
+        switch self {
+        case .boost: Color(hex: 0xA855F7)
+        case .bulkChat: Color(hex: 0x22C55E)
+        case .admirers: Theme.coin
+        case .reveal: Color(hex: 0x3BB8F5)
+        case .superChat: Theme.accent
+        }
+    }
+}
+
 struct BoosterCard: View {
     let kind: BoosterKind
     let count: Int
     let onAdd: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(kind.emoji)
-                .font(.system(size: 30))
+        HStack(spacing: 10) {
+            Image(systemName: kind.systemImage)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(kind.tint)
+                .frame(width: 28)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -21,28 +37,29 @@ struct BoosterCard: View {
                     .font(.click(.title3, weight: .heavy))
                     .foregroundStyle(Theme.primary)
                 Text(kind.label)
-                    .font(.clickPlain(.subheadline, weight: .medium))
+                    .font(.clickPlain(.footnote, weight: .medium))
                     .foregroundStyle(Theme.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.65)
             }
+            .layoutPriority(1)
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
             Button {
                 Haptics.impact(.light)
                 onAdd()
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.system(size: 14, weight: .heavy))
                     .foregroundStyle(Theme.onPrimary)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 30, height: 30)
                     .background(Circle().fill(Theme.primary))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Buy more \(kind.label)")
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 14)
         .cardSurface(radius: 20)
         .accessibilityElement(children: .combine)
