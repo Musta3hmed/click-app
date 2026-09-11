@@ -60,6 +60,10 @@ final class Wallet {
     /// Consecutive-day claim streak. A skipped day resets it.
     var currentStreak: Int = 0
     var lastClaimAt: Date?
+    /// Simulated profile-view counter (fed faster while boosted).
+    var profileViews: Int = 0
+    /// Bulk message rate limit: at most one send per 24h.
+    var lastBulkSendAt: Date? = nil
 
     init(id: String = "primary", coins: Int = 0) {
         self.id = id

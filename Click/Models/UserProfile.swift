@@ -20,6 +20,11 @@ final class UserProfile {
     /// True for the single row representing the signed-in user.
     var isCurrentUser: Bool
 
+    /// While set and in the future, the current user's profile is boosted
+    /// (§boost — honest local simulation, no backend). Declared default so
+    /// lightweight migration from phase-3 stores succeeds.
+    var boostedUntil: Date? = nil
+
     /// For the current-user row: the AuthResult.providerUserID that owns it.
     /// Onboarding refuses to reuse a row whose owner doesn't match the
     /// signed-in credential — the backstop against inheriting a previous
@@ -117,6 +122,11 @@ final class UserProfile {
     }
 
     var isReported: Bool { reportedAt != nil }
+
+    var isBoosted: Bool {
+        guard let boostedUntil else { return false }
+        return boostedUntil > .now
+    }
 
     /// Age derived from DOB when onboarding has provided one; otherwise the
     /// stored (seeded) value.
