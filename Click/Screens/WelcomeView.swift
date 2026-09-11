@@ -11,6 +11,9 @@
 import SwiftUI
 
 struct WelcomeView: View {
+    /// Lets the launch-placeholder logo carry into this screen.
+    var logoNamespace: Namespace.ID
+
     @Environment(AuthSession.self) private var auth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -20,9 +23,8 @@ struct WelcomeView: View {
 
     var body: some View {
         ZStack {
-            LavaBackground(animated: !reduceMotion)
-
-            FloatingStickers(animated: !reduceMotion)
+            // ONE TimelineView drives the lava mesh AND the stickers.
+            WelcomeBackdrop(animated: !reduceMotion)
 
             VStack(spacing: 0) {
                 Text("click")
@@ -36,6 +38,7 @@ struct WelcomeView: View {
                 // Vector mark — centred by construction, no baked-in corner
                 // radius fighting a clipShape, and no asset to maintain.
                 ClickLogoView(size: 110)
+                    .matchedGeometryEffect(id: "clickLogo", in: logoNamespace)
                     .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
                     // Fade, don't zoom, under Reduce Motion.
                     .scaleEffect(reduceMotion ? 1 : (appeared ? 1 : 0.7))
@@ -65,8 +68,8 @@ struct WelcomeView: View {
         .onAppear {
             withAnimation(
                 reduceMotion
-                    ? .easeInOut(duration: 0.2)
-                    : .spring(response: 0.7, dampingFraction: 0.7).delay(0.1)
+                    ? Theme.Motion.screenFade
+                    : Theme.Motion.screen.delay(0.1)
             ) {
                 appeared = true
             }
@@ -87,8 +90,9 @@ struct WelcomeView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .transition(.opacity)
+                    .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: Theme.Metric.chip, style: .continuous))
+                    // Enters as its own element, not by shoving the stack.
+                    .transition(.move(edge: .top).combined(with: .opacity))
                     .accessibilityLabel("Sign in error: \(message)")
             }
 
@@ -131,7 +135,7 @@ struct WelcomeView: View {
             .foregroundStyle(.white.opacity(0.75))
             .padding(.top, 4)
         }
-        .animation(.easeInOut(duration: 0.25), value: auth.lastErrorMessage)
+        .animation(Theme.Motion.screenFade, value: auth.lastErrorMessage)
     }
 }
 
@@ -216,16 +220,24 @@ private struct SignInButton: View {
     var disabled = false
     let action: () -> Void
 
+    @Environment(\.motion) private var motion
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if inProgress {
+                // Fixed-width cross-fade: the icon<->spinner swap must not
+                // reflow the label.
+                ZStack {
                     ProgressView()
                         .tint(.black)
-                } else {
+                        .opacity(inProgress ? 1 : 0)
                     Image(systemName: symbol)
                         .font(.system(size: 18, weight: .semibold))
+                        .opacity(inProgress ? 0 : 1)
                 }
+                .frame(width: 24, height: 24)
+                .animation(motion.screenFade, value: inProgress)
+
                 Text(label)
                     .font(.clickPlain(.headline, weight: .bold))
             }
@@ -244,101 +256,83 @@ private struct SignInButton: View {
 
 // MARK: - Animated background
 
-/// Drifting, breathing gradient blobs over the brand gradient — the Click
-/// answer to Wizz's vortex. Positions are pure functions of time (sin/cos at
-/// incommensurate frequencies), so the motion loops organically forever.
-private struct LavaBackground: View {
-    /// False under Reduce Motion: the blobs freeze into a static wash.
+/// The welcome "lava" — now a GPU-native MeshGradient (no ~80pt blur
+/// passes, no screen blend, no offscreen groups) — plus the floating
+/// stickers, all driven by ONE TimelineView. GeometryReader sits outside
+/// the timeline so layout isn't re-measured per frame. Under Reduce
+/// Motion the timeline pauses at t=0: a static wash.
+private struct WelcomeBackdrop: View {
     var animated = true
 
     var body: some View {
-        TimelineView(.animation(paused: !animated)) { timeline in
-            let t = animated ? timeline.date.timeIntervalSinceReferenceDate : 0
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
 
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
+            TimelineView(.animation(paused: !animated)) { timeline in
+                let t = animated ? timeline.date.timeIntervalSinceReferenceDate : 0
 
                 ZStack {
-                    Theme.brandGradient
+                    lavaMesh(at: t)
 
-                    blob(Theme.brandGold, r: 0.55 * w,
-                         x: w * (0.25 + 0.18 * sin(t * 0.31)),
-                         y: h * (0.22 + 0.10 * cos(t * 0.23)),
-                         breathe: 1 + 0.12 * sin(t * 0.47))
-
-                    blob(Theme.brandMagenta, r: 0.65 * w,
-                         x: w * (0.80 + 0.15 * cos(t * 0.27 + 1.3)),
-                         y: h * (0.55 + 0.12 * sin(t * 0.19 + 0.7)),
-                         breathe: 1 + 0.10 * cos(t * 0.41))
-
-                    blob(Theme.brandViolet.opacity(0.8), r: 0.6 * w,
-                         x: w * (0.35 + 0.20 * sin(t * 0.17 + 2.1)),
-                         y: h * (0.85 + 0.08 * cos(t * 0.29 + 1.9)),
-                         breathe: 1 + 0.14 * sin(t * 0.37 + 0.4))
-
-                    blob(Theme.brandOrange, r: 0.5 * w,
-                         x: w * (0.65 + 0.22 * cos(t * 0.21 + 0.4)),
-                         y: h * (0.30 + 0.14 * sin(t * 0.33 + 2.6)),
-                         breathe: 1 + 0.10 * sin(t * 0.53 + 1.1))
-                }
-            }
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
-    }
-
-    private func blob(_ color: Color, r: CGFloat, x: CGFloat, y: CGFloat, breathe: CGFloat) -> some View {
-        Circle()
-            .fill(color)
-            .frame(width: r * breathe, height: r * breathe)
-            .position(x: x, y: y)
-            .blur(radius: r * 0.35)
-            .blendMode(.screen)
-            .opacity(0.75)
-    }
-}
-
-// MARK: - Floating stickers
-
-/// Wizz-style tilted sticker cards bobbing gently around the headline.
-/// SF Symbols, not emoji — emoji render as boxes in the iOS 26.3 simulator.
-private struct FloatingStickers: View {
-    /// False under Reduce Motion: stickers hold still.
-    var animated = true
-
-    var body: some View {
-        TimelineView(.animation(paused: !animated)) { timeline in
-            let t = animated ? timeline.date.timeIntervalSinceReferenceDate : 0
-
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-
-                // All y-positions stay above ~0.62h: the sign-in stack owns
-                // the bottom third, and stickers must never collide with it.
-                ZStack {
+                    // All y-positions stay above ~0.62h: the sign-in stack
+                    // owns the bottom third, and stickers must never
+                    // collide with it. drawingGroup rasterises each
+                    // sticker's shadow once; the per-frame transforms are
+                    // then cheap.
                     ChatSticker(text: "u up for a click?")
+                        .drawingGroup()
                         .rotationEffect(.degrees(-8 + 3 * sin(t * 0.8)))
                         .position(x: w * 0.68, y: h * 0.17 + 6 * sin(t * 0.9))
 
                     ChatSticker(text: "no small talk", tint: Theme.online)
+                        .drawingGroup()
                         .rotationEffect(.degrees(7 + 3 * cos(t * 0.7 + 1.2)))
                         .position(x: w * 0.28, y: h * 0.60 + 6 * cos(t * 0.8 + 0.5))
 
                     SymbolSticker(symbol: "face.smiling.inverse", tint: Theme.brandPink)
+                        .drawingGroup()
                         .rotationEffect(.degrees(10 + 4 * sin(t * 0.6 + 2)))
                         .position(x: w * 0.14, y: h * 0.24 + 8 * sin(t * 0.75 + 1.6))
 
                     SymbolSticker(symbol: "bolt.fill", tint: Theme.brandViolet)
+                        .drawingGroup()
                         .rotationEffect(.degrees(-12 + 4 * cos(t * 0.65 + 0.3)))
                         .position(x: w * 0.86, y: h * 0.56 + 7 * cos(t * 0.85 + 2.4))
                 }
             }
         }
-        .allowsHitTesting(false)
         .ignoresSafeArea()
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// Full-strength brand mesh: the same drift idea as AmbientBackground
+    /// but loud — this is the one hero surface.
+    private func lavaMesh(at t: TimeInterval) -> MeshGradient {
+        let drift = { (rate: Double, phase: Double, amplitude: Float) -> Float in
+            amplitude * Float(sin(t * rate + phase))
+        }
+
+        let points: [SIMD2<Float>] = [
+            [0, 0],
+            [0.5 + drift(0.31, 0.0, 0.20), 0],
+            [1, 0],
+            [0, 0.5 + drift(0.23, 1.3, 0.22)],
+            [0.5 + drift(0.27, 2.1, 0.26), 0.5 + drift(0.19, 4.2, 0.26)],
+            [1, 0.5 + drift(0.21, 5.0, 0.22)],
+            [0, 1],
+            [0.5 + drift(0.29, 3.3, 0.20), 1],
+            [1, 1]
+        ]
+
+        let colors: [Color] = [
+            Theme.brandOrange, Theme.brandGold, Theme.brandCoral,
+            Theme.brandCoral, Theme.brandMagenta, Theme.brandPink,
+            Theme.brandViolet, Theme.brandPink, Theme.brandMagenta
+        ]
+
+        return MeshGradient(width: 3, height: 3, points: points, colors: colors)
     }
 }
 
@@ -372,6 +366,7 @@ private struct SymbolSticker: View {
 }
 
 #Preview {
-    WelcomeView()
+    @Previewable @Namespace var logo
+    return WelcomeView(logoNamespace: logo)
         .environment(AuthSession())
 }

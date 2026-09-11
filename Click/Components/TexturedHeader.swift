@@ -2,7 +2,7 @@
 //  TexturedHeader.swift
 //  Click
 //
-//  Blue gradient header with a soft photographic-feeling texture, a large
+//  Warm brand-gradient header with a soft procedural texture, a large
 //  lowercase italic title, and a trailing glass capsule of actions.
 //
 //  The textures are drawn procedurally because the project ships with no
@@ -43,10 +43,15 @@ struct TexturedHeader<Trailing: View>: View {
         .background {
             ZStack {
                 Theme.headerGradient
-                switch texture {
-                case .clouds: CloudTexture()
-                case .water: WaterTexture()
+                // Static content, frozen into one raster so it stops
+                // re-compositing at 120Hz during drags on the sheet below.
+                Group {
+                    switch texture {
+                    case .clouds: CloudTexture()
+                    case .water: WaterTexture()
+                    }
                 }
+                .drawingGroup()
             }
             .ignoresSafeArea(edges: .top)
         }

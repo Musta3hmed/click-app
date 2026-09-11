@@ -65,8 +65,13 @@ struct ChatsView: View {
             // the other two tabs. ConversationView gets its bar back.
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Conversation.self) { conversation in
-                ConversationView(conversation: conversation)
-                    .navigationTransition(.zoom(sourceID: conversation.id, in: zoom))
+                // Reduce Motion gets the standard push instead of the zoom.
+                if motion.reduceMotion {
+                    ConversationView(conversation: conversation)
+                } else {
+                    ConversationView(conversation: conversation)
+                        .navigationTransition(.zoom(sourceID: conversation.id, in: zoom))
+                }
             }
             .confirmationDialog(
                 "Deny and delete this request?",
@@ -188,13 +193,19 @@ struct ChatsView: View {
                         onAccept: { accept(conversation) },
                         onDeny: { denying = conversation }
                     )
-                    .matchedTransitionSource(id: conversation.id, in: zoom)
+                    .matchedTransitionSource(id: conversation.id, in: zoom) { source in
+                        source.clipShape(.rect(cornerRadius: Theme.Metric.tile))
+                    }
                 } else {
                     NavigationLink(value: conversation) {
                         ConversationRow(conversation: conversation)
                     }
                     .buttonStyle(.plain)
-                    .matchedTransitionSource(id: conversation.id, in: zoom)
+                    // Configured source: the zoom lifts a rounded card, not
+                    // a raw rectangle.
+                    .matchedTransitionSource(id: conversation.id, in: zoom) { source in
+                        source.clipShape(.rect(cornerRadius: Theme.Metric.tile))
+                    }
                 }
 
                 Divider()

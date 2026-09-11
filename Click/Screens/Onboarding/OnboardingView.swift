@@ -60,6 +60,9 @@ struct OnboardingView: View {
     @State private var seeking: Set<SeekingPreference> = []
     @State private var hydrated = false
     @State private var saveErrorMessage: String?
+    /// Direction of the last step change, so the wizard pushes forward
+    /// and slides back instead of hard-cutting.
+    @State private var movingForward = true
 
     private var step: OnboardingStep {
         OnboardingStep(rawValue: storedStep.clamped(to: 0...(OnboardingStep.allCases.count - 1))) ?? .name
@@ -74,6 +77,9 @@ struct OnboardingView: View {
             // Scrolls so large Dynamic Type can never push content (or the
             // wheel) out of reach; Continue stays pinned below.
             ScrollView {
+                // One identity per step: title and body move TOGETHER as a
+                // directional push (the header used to hard-cut while the
+                // body faded).
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(step.title)
@@ -85,7 +91,6 @@ struct OnboardingView: View {
                             .foregroundStyle(Theme.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(nil, value: storedStep)
 
                     stepBody
                         .frame(maxWidth: .infinity)
@@ -93,6 +98,8 @@ struct OnboardingView: View {
                 .padding(.horizontal, Theme.Metric.gutter)
                 .padding(.top, 24)
                 .padding(.bottom, 12)
+                .id(step)
+                .transition(.push(from: movingForward ? .trailing : .leading))
             }
             .scrollDismissesKeyboard(.interactively)
 
@@ -133,6 +140,9 @@ struct OnboardingView: View {
 
             ProgressView(value: Double(storedStep + 1), total: Double(OnboardingStep.allCases.count))
                 .tint(Theme.brandPink)
+                // Ease-out, never a spring: a progress bar that overshoots
+                // and comes back reads as going backwards.
+                .animation(Theme.Motion.celebrateOut, value: storedStep)
                 .accessibilityLabel("Step \(storedStep + 1) of \(OnboardingStep.allCases.count)")
 
             // The exit that was missing: without it, an under-18 user or a
@@ -304,6 +314,7 @@ struct OnboardingView: View {
                 storedStep = 0
             }
         } else {
+            movingForward = true
             withAnimation(Theme.Motion.screen) {
                 storedStep += 1
             }
@@ -313,6 +324,7 @@ struct OnboardingView: View {
     private func goBack() {
         guard step != .name else { return }
         Haptics.selection()
+        movingForward = false
         withAnimation(Theme.Motion.screen) {
             storedStep -= 1
         }
@@ -349,7 +361,12 @@ private struct NameStep: View {
                 .foregroundStyle(Theme.secondary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .onAppear { focused = true }
+        // Deferred so the keyboard slide stops colliding with the step
+        // transition.
+        .task {
+            try? await Task.sleep(for: .seconds(0.36))
+            focused = true
+        }
         .onChange(of: name) { _, newValue in
             if newValue.count > 30 { name = String(newValue.prefix(30)) }
         }

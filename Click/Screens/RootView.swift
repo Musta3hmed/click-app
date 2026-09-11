@@ -18,10 +18,10 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection: AppTab = .swipe
     @State private var chrome = ChromeState()
+    /// The launch logo carries into WelcomeView — same mark, free continuity.
+    @Namespace private var logoNamespace
 
     @AppStorage(DefaultsKey.onboardingCompleted) private var onboardingCompleted = false
-
-    @Query private var conversations: [Conversation]
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -30,9 +30,9 @@ struct RootView: View {
         Group {
             switch auth.state {
             case .restoring:
-                launchPlaceholder
+                LaunchPlaceholder(logoNamespace: logoNamespace)
             case .signedOut:
-                WelcomeView()
+                WelcomeView(logoNamespace: logoNamespace)
                     .transition(.opacity)
             case .signedIn:
                 if onboardingCompleted {
@@ -51,26 +51,6 @@ struct RootView: View {
         .environment(\.motion, ClickMotion(reduceMotion: reduceMotion))
     }
 
-    /// Shown while the Keychain (and, with real Apple auth, a bounded
-    /// network check) restores the session. Logo + spinner, not a bare
-    /// gradient — restore can take a moment on weak signal.
-    private var launchPlaceholder: some View {
-        ZStack {
-            // launchGradient: full brand in light, warm near-dark in dark —
-            // no orange flash into a black app.
-            Theme.launchGradient.ignoresSafeArea()
-            VStack(spacing: 20) {
-                ClickLogoView(size: 96)
-                ProgressView()
-                    .tint(.white)
-            }
-        }
-        // .ignore so the label is actually announced — on a plain ZStack it
-        // was dropped and VoiceOver read the unlabeled children instead.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Click is starting")
-    }
-
     private var mainShell: some View {
         ZStack(alignment: .bottom) {
             Theme.backgroundWash.ignoresSafeArea()
@@ -83,9 +63,14 @@ struct RootView: View {
                 }
             }
             .transition(.opacity)
+            // Content cross-fades on screenFade, decoupled from the pill's
+            // spring in the tab bar.
+            .animation(Theme.Motion.screenFade, value: selection)
 
             if !chrome.tabBarHidden {
-                FloatingTabBar(selection: $selection, badges: badges)
+                // TabBarHost owns the badge @Query — a message write no
+                // longer re-renders the entire shell.
+                TabBarHost(selection: $selection)
                     // Real margin on devices without a home indicator (SE).
                     .padding(.bottom, 10)
                     .transition(
@@ -139,6 +124,68 @@ struct RootView: View {
 
     private var currentUserName: String {
         currentUsers.first { !$0.isDeleted }?.name ?? ""
+    }
+}
+
+// MARK: - Launch placeholder
+
+/// Shown while the Keychain (and, with real Apple auth, a bounded network
+/// check) restores the session. The spinner is delayed 600ms so a fast
+/// restore never flashes it; while waiting the logo breathes gently.
+private struct LaunchPlaceholder: View {
+    let logoNamespace: Namespace.ID
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showSpinner = false
+
+    var body: some View {
+        ZStack {
+            // launchGradient: full brand in light, warm near-dark in dark —
+            // no orange flash into a black app.
+            Theme.launchGradient.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Group {
+                    if reduceMotion {
+                        ClickLogoView(size: 96)
+                    } else {
+                        PhaseAnimator([false, true]) { pulsing in
+                            ClickLogoView(size: 96)
+                                .scaleEffect(pulsing ? 1.05 : 1.0)
+                        } animation: { _ in
+                            Theme.Motion.screenFade.speed(0.22)
+                        }
+                    }
+                }
+                .matchedGeometryEffect(id: "clickLogo", in: logoNamespace)
+
+                ProgressView()
+                    .tint(.white)
+                    .opacity(showSpinner ? 1 : 0)
+                    .animation(Theme.Motion.screenFade, value: showSpinner)
+            }
+        }
+        // .ignore so the label is actually announced — on a plain ZStack it
+        // was dropped and VoiceOver read the unlabeled children instead.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Click is starting")
+        .task {
+            try? await Task.sleep(for: .seconds(0.6))
+            showSpinner = true
+        }
+    }
+}
+
+// MARK: - Tab bar host
+
+/// Owns the badge computation and its @Query so message writes re-render
+/// only this leaf, never the whole shell (and its active screen).
+private struct TabBarHost: View {
+    @Binding var selection: AppTab
+
+    @Query private var conversations: [Conversation]
+
+    var body: some View {
+        FloatingTabBar(selection: $selection, badges: badges)
     }
 
     private var badges: [AppTab: Int] {
