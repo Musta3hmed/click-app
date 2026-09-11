@@ -1,16 +1,13 @@
 //
-//  Project_FOMO___Social_MediaApp.swift
+//  ClickApp.swift
 //  Click
-//
-//  The Xcode target is still named "Project FOMO - Social Media", so the
-//  @main type keeps its mangled template name. The product is called Click.
-//
+//  Click app entry point.
 
 import SwiftUI
 import SwiftData
 
 @main
-struct Project_FOMO___Social_MediaApp: App {
+struct ClickApp: App {
     let sharedModelContainer: ModelContainer = {
         let schema = Schema(AppSchema.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)

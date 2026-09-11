@@ -15,7 +15,18 @@ struct RootView: View {
 
     @Query private var conversations: [Conversation]
 
+    @AppStorage("isSignedIn") private var isSignedIn = false
+
     var body: some View {
+        if isSignedIn {
+            mainShell
+        } else {
+            WelcomeView()
+                .transition(.opacity)
+        }
+    }
+
+    private var mainShell: some View {
         ZStack(alignment: .bottom) {
             Theme.background.ignoresSafeArea()
 

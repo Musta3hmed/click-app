@@ -1,11 +1,11 @@
 //
-//  Project_FOMO___Social_MediaUITests.swift
+//  ClickUITests.swift
 //  Click
 //
 
 import XCTest
 
-final class Project_FOMO___Social_MediaUITests: XCTestCase {
+final class ClickUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
