@@ -44,12 +44,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                accountSection
-                customizationSection
-                visibilitySection
-                notificationsSection
-                communitySection
-                privacySection
+                Group {
+                    accountSection
+                    customizationSection
+                    visibilitySection
+                    notificationsSection
+                    communitySection
+                    privacySection
+                }
+                // Themed rows — the system default flips oddly under a
+                // forced appearance.
+                .listRowBackground(Theme.surface)
                 signOutSection
             }
             .listStyle(.insetGrouped)
@@ -324,9 +329,12 @@ struct BlockedUsersView: View {
                         .foregroundStyle(Theme.accent)
                         .buttonStyle(.plain)
                     }
+                    .listRowBackground(Theme.surface)
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
         .navigationTitle("blocked users")
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -17,13 +17,16 @@ struct BingoView: View {
     @Binding var coinEarnTrigger: Int
 
     @Environment(\.modelContext) private var context
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motion) private var motion
 
     @Query private var boards: [BingoBoard]
     @Query private var wallets: [Wallet]
 
     @State private var showingOdds = false
     @State private var insufficientMessage: String?
+    /// Bumped on claim: coins fly from the board toward the wallet capsule.
+    @State private var coinFlight = 0
+    @State private var claimedBounce = 0
 
     static let claimPrice = 25
     static let picksAllowed = 3
@@ -47,11 +50,14 @@ struct BingoView: View {
 
                 if board.pickedIndexes.count == Self.picksAllowed && !board.isClaimed {
                     claimPanel(for: board)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 if board.isClaimed {
                     Label("claimed — new board tomorrow", systemImage: "checkmark.circle.fill")
                         .font(.click(.footnote, weight: .bold))
                         .foregroundStyle(Theme.online)
+                        .symbolEffect(.bounce, value: claimedBounce)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
 
@@ -67,6 +73,12 @@ struct BingoView: View {
         }
         .padding(16)
         .cardSurface(radius: Theme.Metric.card)
+        .animation(motion.state, value: board?.pickedIndexes.count ?? 0)
+        .animation(motion.state, value: board?.isClaimed ?? false)
+        // Coins arcing up-and-right, toward the wallet capsule.
+        .overlay(alignment: .topTrailing) {
+            CoinFlightOverlay(trigger: coinFlight)
+        }
         // Keyed on the date so the board rolls over at midnight while the
         // app stays open, instead of vanishing until the next relaunch.
         .task(id: todayKey) { ensureBoard() }
@@ -113,8 +125,7 @@ struct BingoView: View {
                     reward: reward(at: index, on: board),
                     isRevealed: board.pickedIndexes.contains(index),
                     isEnabled: !board.isClaimed && board.pickedIndexes.count < Self.picksAllowed
-                        && !board.pickedIndexes.contains(index),
-                    reduceMotion: reduceMotion
+                        && !board.pickedIndexes.contains(index)
                 ) {
                     pick(index, on: board)
                 }
@@ -149,8 +160,9 @@ struct BingoView: View {
             .accessibilityLabel("Claim all three rewards for \(Self.claimPrice) coins")
 
             if !canAfford {
-                // Never a silent no-op: say exactly why and what to do.
-                Text("You have \(balance.formatted()) coins — you need \(Self.claimPrice). Collect your daily reward to top up; your picks stay saved.")
+                // Never a silent no-op — and honest about the timeline: one
+                // daily reward does NOT close the gap.
+                Text("You have \(balance.formatted()) coins — you need \(Self.claimPrice). Daily rewards and referral codes will get you there over the next days. Today's board expires at midnight.")
                     .font(.clickPlain(.footnote, weight: .medium))
                     .foregroundStyle(Theme.secondary)
                     .multilineTextAlignment(.center)
@@ -164,6 +176,7 @@ struct BingoView: View {
                 Section {
                     ForEach(Self.oddsTable, id: \.label) { row in
                         LabeledContent(row.label, value: row.chance)
+                            .listRowBackground(Theme.surface)
                     }
                 } header: {
                     Text("Each of the 9 tiles is drawn with these odds")
@@ -171,6 +184,8 @@ struct BingoView: View {
                     Text("Rewards are Click coins and boosters only — no real money is involved, and coins cannot be cashed out. The board is fixed for the whole day: quitting the app never re-rolls it.")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
             .navigationTitle("bingo odds")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -186,18 +201,20 @@ struct BingoView: View {
         ("20 coins", "2 in 9"),
         ("40 coins", "1 in 9"),
         ("1 boost", "1 in 9"),
-        ("1 reveal", "1 in 9"),
+        ("1 bulk chat", "1 in 9"),
         ("1 super chat", "1 in 9")
     ]
 
     /// The fixed reward pool per board: shuffled deterministically by date.
+    /// Only boosters with a real mechanic — `reveal` sold nothing and was
+    /// retired from the pool with the store card.
     static func generateRewards(dateKey: String) -> [String] {
         let pool: [BingoReward] = [
             .coins(10), .coins(10), .coins(10),
             .coins(20), .coins(20),
             .coins(40),
             .booster(.boost),
-            .booster(.reveal),
+            .booster(.bulkChat),
             .booster(.superChat)
         ]
         var generator = SeededGenerator(seed: Self.seed(for: dateKey))
@@ -271,70 +288,83 @@ struct BingoView: View {
         board.isClaimed = true
         try? context.save()
         coinEarnTrigger += 1
+        coinFlight += 1
+        claimedBounce += 1
         Haptics.notify(.success)
     }
 }
 
 // MARK: - Tile
 
+/// A tile that GENUINELY flips (the file header used to claim a flip that
+/// was really a hard cut through a non-animatable AnyShapeStyle swap):
+/// two faces, back and front, rotating 0->180 with perspective, faces
+/// swapped exactly at the 90-degree midpoint.
 private struct BingoTile: View {
     let reward: BingoReward?
     let isRevealed: Bool
     let isEnabled: Bool
-    let reduceMotion: Bool
     let onPick: () -> Void
+
+    @Environment(\.motion) private var motion
 
     var body: some View {
         Button(action: onPick) {
-            ZStack {
-                RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
-                    .fill(isRevealed ? AnyShapeStyle(Theme.surface) : AnyShapeStyle(Theme.brandGradient))
-
-                if isRevealed {
-                    revealedFace
-                } else {
-                    Image(systemName: "questionmark")
-                        .font(.system(size: 24, weight: .black))
-                        .foregroundStyle(.white)
-                }
-            }
+            TileFlip(
+                angle: isRevealed ? 180 : 0,
+                front: revealedFace,
+                back: faceDown
+            )
             .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                if isRevealed {
-                    RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
-                        .strokeBorder(Theme.brandPink, lineWidth: 2)
-                }
-            }
         }
         .buttonStyle(.click)
         .disabled(!isEnabled)
-        .animation(
-            reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.45, dampingFraction: 0.65),
-            value: isRevealed
-        )
+        // Disabled face-down tiles visibly dim — they used to be
+        // pixel-identical to live ones.
+        .saturation(isRevealed || isEnabled ? 1 : 0.5)
+        .opacity(isRevealed || isEnabled ? 1 : 0.55)
+        .animation(motion.state, value: isRevealed)
+        .animation(motion.state, value: isEnabled)
         .accessibilityLabel(accessibilityText)
     }
 
-    @ViewBuilder
-    private var revealedFace: some View {
-        VStack(spacing: 4) {
-            switch reward {
-            case .coins:
-                CoinView(size: 26)
-            case .booster(let kind):
-                Image(systemName: kind.systemImage)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(kind.tint)
-            case nil:
-                EmptyView()
-            }
-            Text(reward?.label ?? "")
-                .font(.click(.caption2, weight: .heavy))
-                .foregroundStyle(Theme.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+    private var faceDown: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
+                .fill(Theme.brandGradient)
+            Image(systemName: "questionmark")
+                .font(.system(size: 24, weight: .black))
+                .foregroundStyle(.white)
         }
-        .padding(4)
+    }
+
+    private var revealedFace: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
+                .fill(Theme.surface)
+            VStack(spacing: 4) {
+                switch reward {
+                case .coins:
+                    CoinView(size: 26)
+                case .booster(let kind):
+                    Image(systemName: kind.systemImage)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(kind.tint)
+                case nil:
+                    EmptyView()
+                }
+                Text(reward?.label ?? "")
+                    .font(.click(.caption2, weight: .heavy))
+                    .foregroundStyle(Theme.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            .padding(4)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
+                .strokeBorder(Theme.brandPink, lineWidth: 2)
+        }
     }
 
     private var accessibilityText: String {
@@ -342,6 +372,93 @@ private struct BingoTile: View {
             return "Revealed: \(reward?.label ?? "unknown reward")"
         }
         return isEnabled ? "Face-down tile. Double-tap to reveal." : "Face-down tile, not selectable."
+    }
+}
+
+/// Animatable two-faced flip. `angle` interpolates per frame, so the face
+/// swap really happens at the visual midpoint.
+private struct TileFlip<Front: View, Back: View>: View, Animatable {
+    var angle: Double
+    let front: Front
+    let back: Back
+
+    var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    var body: some View {
+        ZStack {
+            if angle < 90 {
+                back
+            } else {
+                // Pre-rotated so it reads correctly once the parent
+                // rotation passes 90.
+                front.rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+            }
+        }
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
+    }
+}
+
+/// Three coins arcing up toward the wallet capsule after a claim, then
+/// fading. Self-contained (no cross-view namespace plumbing); the coins
+/// are always in the hierarchy at opacity 0 and animate on the trigger.
+private struct CoinFlightOverlay: View {
+    let trigger: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            if !reduceMotion {
+                ForEach(0..<3, id: \.self) { index in
+                    FlyingCoin(delay: Double(index) * Theme.Motion.stagger, trigger: trigger)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct FlyingCoin: View {
+    let delay: Double
+    let trigger: Int
+
+    private struct FlightValues {
+        var offset = CGSize(width: -60, height: 140)
+        var opacity = 0.0
+        var scale = 0.8
+    }
+
+    var body: some View {
+        CoinView(size: 22)
+            .keyframeAnimator(initialValue: FlightValues(), trigger: trigger) { view, values in
+                view
+                    .offset(values.offset)
+                    // Invisible until (and after) a flight — trigger 0 is
+                    // the untouched initial state.
+                    .opacity(trigger == 0 ? 0 : values.opacity)
+                    .scaleEffect(values.scale)
+            } keyframes: { _ in
+                KeyframeTrack(\.offset) {
+                    CubicKeyframe(CGSize(width: -60, height: 140), duration: delay + 0.01)
+                    CubicKeyframe(CGSize(width: -10, height: 20), duration: 0.42)
+                    CubicKeyframe(CGSize(width: 8, height: -34), duration: 0.28)
+                }
+                KeyframeTrack(\.opacity) {
+                    CubicKeyframe(0, duration: delay + 0.01)
+                    CubicKeyframe(1, duration: 0.18)
+                    CubicKeyframe(1, duration: 0.34)
+                    CubicKeyframe(0, duration: 0.18)
+                }
+                KeyframeTrack(\.scale) {
+                    CubicKeyframe(0.8, duration: delay + 0.01)
+                    CubicKeyframe(1.0, duration: 0.42)
+                    CubicKeyframe(0.6, duration: 0.28)
+                }
+            }
     }
 }
 

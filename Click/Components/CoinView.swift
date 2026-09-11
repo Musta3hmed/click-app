@@ -5,6 +5,12 @@
 //  The Click coin: a gold smiley, drawn entirely with vectors so it is
 //  crisp at any size, tintable and animatable. No raster assets.
 //
+//  The earn animation is a keyframe track: monotonic 0->360 spin (the old
+//  completion-based version visibly rewound 360->0) plus a three-stage
+//  scale overshoot; it resets instantly between triggers and is skipped
+//  under Reduce Motion. Eyes are real vector shapes OVER the canvas so a
+//  blink animates openness instead of swapping non-interpolable paths.
+//
 
 import SwiftUI
 
@@ -16,39 +22,55 @@ struct CoinView: View {
     var earnTrigger: Int = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var spin = false
+
+    private struct EarnValues {
+        var angle = 0.0
+        var scale = 1.0
+    }
 
     var body: some View {
         Group {
             if animatesIdle && !reduceMotion {
                 PhaseAnimator([IdlePhase.resting, .blinking, .wobbling]) { phase in
-                    face(blinking: phase == .blinking)
+                    coinFace(eyeOpenness: phase == .blinking ? 0.08 : 1)
                         .rotationEffect(.degrees(phase == .wobbling ? 6 : 0))
                 } animation: { phase in
                     switch phase {
-                    case .resting: .easeInOut(duration: 1.6)
-                    case .blinking: .easeInOut(duration: 0.16)
-                    case .wobbling: .spring(response: 0.5, dampingFraction: 0.5)
+                    case .resting: Theme.Motion.screenFade.speed(0.2)
+                    case .blinking: Theme.Motion.screenFade.speed(1.6)
+                    case .wobbling: Theme.Motion.celebrate
                     }
                 }
             } else {
-                face(blinking: false)
+                coinFace(eyeOpenness: 1)
             }
         }
         .frame(width: size, height: size)
-        .rotation3DEffect(.degrees(spin ? 360 : 0), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(spin ? 1.25 : 1)
-        .onChange(of: earnTrigger) { _, _ in
-            // The 3D spin is the most vestibular-triggering motion in the
-            // app — skip it entirely under Reduce Motion (the rolling coin
-            // count still communicates the earn).
-            guard !reduceMotion else { return }
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.55)) {
-                spin = true
-            } completion: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    spin = false
-                }
+        // Collapse the layers BEFORE any 3D transform: spinning inside a
+        // .ultraThinMaterial otherwise invalidates the material sample
+        // every frame.
+        .compositingGroup()
+        .keyframeAnimator(
+            initialValue: EarnValues(),
+            trigger: earnTrigger
+        ) { view, values in
+            view
+                // Monotonic — the coin can never spin backwards. Skipped
+                // under Reduce Motion (the rolling count still communicates
+                // the earn).
+                .rotation3DEffect(
+                    .degrees(reduceMotion ? 0 : values.angle),
+                    axis: (x: 0, y: 1, z: 0)
+                )
+                .scaleEffect(reduceMotion ? 1 : values.scale)
+        } keyframes: { _ in
+            KeyframeTrack(\.angle) {
+                CubicKeyframe(360, duration: 0.62)
+            }
+            KeyframeTrack(\.scale) {
+                CubicKeyframe(1.18, duration: 0.20)
+                CubicKeyframe(1.30, duration: 0.16)
+                CubicKeyframe(1.00, duration: 0.26)
             }
         }
         .accessibilityHidden(true)
@@ -58,7 +80,33 @@ struct CoinView: View {
         case resting, blinking, wobbling
     }
 
-    private func face(blinking: Bool) -> some View {
+    private static let eyeColor = Color(hex: 0x7A5A00)
+
+    /// Canvas base (rim, plate, smile, glint) + animatable vector eyes.
+    private func coinFace(eyeOpenness: CGFloat) -> some View {
+        base
+            .overlay {
+                GeometryReader { geo in
+                    let d = min(geo.size.width, geo.size.height)
+                    let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+                    let eyeY = center.y - d * 0.08
+                    let eyeOffset = d * 0.14
+                    let eyeR = d * 0.05
+
+                    ForEach([-1.0, 1.0], id: \.self) { direction in
+                        Ellipse()
+                            .fill(Self.eyeColor)
+                            .frame(width: eyeR * 2, height: eyeR * 2)
+                            // Openness is a vertical squash — animatable,
+                            // unlike a circle-for-line path swap.
+                            .scaleEffect(x: 1, y: max(0.08, eyeOpenness))
+                            .position(x: center.x + direction * eyeOffset, y: eyeY)
+                    }
+                }
+            }
+    }
+
+    private var base: some View {
         Canvas { context, canvasSize in
             let d = min(canvasSize.width, canvasSize.height)
             let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
@@ -87,25 +135,6 @@ struct CoinView: View {
                 )
             )
 
-            // Eyes. Blinking draws them as lines.
-            let eyeColor = Color(hex: 0x7A5A00)
-            let eyeY = center.y - d * 0.08
-            let eyeOffset = d * 0.14
-            let eyeR = d * 0.05
-
-            for direction in [-1.0, 1.0] {
-                let x = center.x + direction * eyeOffset
-                if blinking {
-                    var line = Path()
-                    line.move(to: CGPoint(x: x - eyeR, y: eyeY))
-                    line.addLine(to: CGPoint(x: x + eyeR, y: eyeY))
-                    context.stroke(line, with: .color(eyeColor), style: StrokeStyle(lineWidth: d * 0.035, lineCap: .round))
-                } else {
-                    let rect = CGRect(x: x - eyeR, y: eyeY - eyeR, width: eyeR * 2, height: eyeR * 2)
-                    context.fill(Circle().path(in: rect), with: .color(eyeColor))
-                }
-            }
-
             // Smile.
             var smile = Path()
             let smileWidth = d * 0.34
@@ -114,7 +143,11 @@ struct CoinView: View {
                 to: CGPoint(x: center.x + smileWidth / 2, y: center.y + d * 0.10),
                 control: CGPoint(x: center.x, y: center.y + d * 0.28)
             )
-            context.stroke(smile, with: .color(eyeColor), style: StrokeStyle(lineWidth: d * 0.045, lineCap: .round))
+            context.stroke(
+                smile,
+                with: .color(Self.eyeColor),
+                style: StrokeStyle(lineWidth: d * 0.045, lineCap: .round)
+            )
 
             // Glint.
             let glintRect = CGRect(

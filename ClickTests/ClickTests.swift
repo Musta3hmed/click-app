@@ -89,7 +89,7 @@ struct ClickModelTests {
         #expect(rewards.filter { $0 == .coins(20) }.count == 2)
         #expect(rewards.filter { $0 == .coins(40) }.count == 1)
         #expect(rewards.filter { $0 == .booster(.boost) }.count == 1)
-        #expect(rewards.filter { $0 == .booster(.reveal) }.count == 1)
+        #expect(rewards.filter { $0 == .booster(.bulkChat) }.count == 1)
         #expect(rewards.filter { $0 == .booster(.superChat) }.count == 1)
     }
 
