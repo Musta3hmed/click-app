@@ -8,6 +8,8 @@ import SwiftData
 
 @main
 struct ClickApp: App {
+    @State private var authSession = AuthSession()
+
     let sharedModelContainer: ModelContainer = {
         let schema = Schema(AppSchema.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -22,6 +24,8 @@ struct ClickApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(authSession)
+                .task { await authSession.restore() }
         }
         .modelContainer(sharedModelContainer)
     }

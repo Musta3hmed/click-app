@@ -14,6 +14,7 @@ struct ChatsView: View {
     private var candidates: [UserProfile]
 
     @State private var folder: ChatFolder = .messages
+    @Namespace private var zoom
 
     var body: some View {
         NavigationStack {
@@ -25,20 +26,29 @@ struct ChatsView: View {
                         FolderTabs(selection: $folder, badgedFolders: badgedFolders)
                             .padding(.top, 18)
 
-                        if visibleConversations.isEmpty {
-                            EmptyChatsState(onlineCount: candidates.count * 547)
-                                .padding(.top, 40)
-                        } else {
-                            conversationList
+                        // The list itself scrolls — without this only the
+                        // first few rows were reachable on a small screen.
+                        ScrollView {
+                            if visibleConversations.isEmpty {
+                                EmptyChatsState(onlineCount: candidates.count * 547)
+                                    .padding(.top, 40)
+                            } else {
+                                conversationList
+                            }
                         }
+                        .scrollIndicators(.hidden)
                     }
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.background)
-            .ignoresSafeArea(edges: .top)
+            // This tab lives in a NavigationStack with no title: hide the
+            // bar so its inset doesn't push the header band lower than on
+            // the other two tabs. ConversationView gets its bar back.
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Conversation.self) { conversation in
                 ConversationView(conversation: conversation)
+                    .navigationTransition(.zoom(sourceID: conversation.id, in: zoom))
             }
         }
     }
@@ -50,11 +60,10 @@ struct ChatsView: View {
             HStack(spacing: 10) {
                 GlassCapsule {
                     Image(systemName: "gauge.with.needle.fill")
-                        .foregroundStyle(Color(hex: 0xFF8C42))
+                        .foregroundStyle(.white)
                     Image(systemName: "bolt.fill")
-                        .foregroundStyle(Color(hex: 0xA855F7))
-                    Image(systemName: "hexagon.fill")
-                        .foregroundStyle(Theme.coin)
+                        .foregroundStyle(Theme.brandViolet)
+                    CoinView(size: 18)
                 }
                 .font(.system(size: 16, weight: .bold))
 
@@ -72,6 +81,7 @@ struct ChatsView: View {
                     ConversationRow(conversation: conversation)
                 }
                 .buttonStyle(.plain)
+                .matchedTransitionSource(id: conversation.id, in: zoom)
 
                 Divider()
                     .overlay(Theme.separator)
@@ -190,9 +200,15 @@ private struct ConversationRow: View {
                     .foregroundStyle(Theme.secondary)
 
                 if conversation.unreadCount > 0 && conversation.participant?.isMuted != true {
-                    Circle()
-                        .fill(Theme.accent)
-                        .frame(width: 10, height: 10)
+                    // The count, not a bare dot — 8 unread should look
+                    // different from 1.
+                    Text(conversation.unreadCount > 99 ? "99+" : "\(conversation.unreadCount)")
+                        .font(.clickPlain(.caption2, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.accent, in: Capsule())
+                        .accessibilityLabel("\(conversation.unreadCount) unread")
                 }
             }
 

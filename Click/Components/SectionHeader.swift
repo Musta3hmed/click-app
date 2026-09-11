@@ -56,7 +56,7 @@ struct PillButton: View {
                     Capsule().fill(isEnabled ? Theme.primary : Theme.separator)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.click)
         .disabled(!isEnabled)
     }
 }

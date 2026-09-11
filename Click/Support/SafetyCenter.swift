@@ -85,10 +85,25 @@ struct ReportSheet: View {
                     Text("Why are you reporting \(profile.name)?")
                 }
 
+                if selectedReason == .selfHarm {
+                    Section {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("If someone may be in danger")
+                                .font(.clickPlain(.subheadline, weight: .bold))
+                            Text("If you think they might hurt themselves, contact your local emergency number, or in Australia call Lifeline on 13 11 14. You matter too — support is there for you as well.")
+                                .font(.clickPlain(.footnote))
+                                .foregroundStyle(Theme.secondary)
+                        }
+                    }
+                }
+
                 Section {
                     Toggle("Also block \(profile.name)", isOn: $alsoBlock)
                 } footer: {
-                    Text("Blocking removes them from your swipe deck and chats immediately. Reports are reviewed by our moderation team.")
+                    // Honest copy: Click has no backend yet, so no claim of a
+                    // moderation team. Do NOT restore that sentence until a
+                    // real report pipeline exists.
+                    Text("Blocking removes them from your swipe deck and chats immediately. Click is in early testing: your report is saved on this device and will be submitted for review once reporting goes live.")
                 }
 
                 Section {
@@ -150,7 +165,7 @@ struct SafetyMenu: View {
             Image(systemName: "ellipsis")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Theme.secondary)
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("Safety options for \(profile.name)")

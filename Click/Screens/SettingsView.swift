@@ -9,6 +9,11 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(AuthSession.self) private var auth
+
+    @State private var confirmingDelete = false
+    @State private var deleteConfirmationText = ""
+    @State private var deleteMismatch = false
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -30,7 +35,6 @@ struct SettingsView: View {
                 visibilitySection
                 notificationsSection
                 communitySection
-                subscriptionSection
                 privacySection
                 signOutSection
             }
@@ -88,7 +92,7 @@ struct SettingsView: View {
                     .font(.clickPlain(.body))
                     .padding()
             } label: {
-                LabeledContent("location", value: me?.countryFlag ?? "🇦🇺")
+                LabeledContent("location", value: locationDescription)
             }
 
             NavigationLink {
@@ -160,18 +164,10 @@ struct SettingsView: View {
         }
     }
 
-    private var subscriptionSection: some View {
-        Section("subscription") {
-            Button("restore my subscription") {}
-                .foregroundStyle(Theme.primary)
-        }
-    }
-
     private var privacySection: some View {
         Section("privacy & safety") {
             NavigationLink("privacy policy") { Text("Privacy policy").padding() }
             NavigationLink("terms of service") { Text("Terms of service").padding() }
-            NavigationLink("my data") { Text("Download or delete your data").padding() }
         }
     }
 
@@ -180,17 +176,62 @@ struct SettingsView: View {
             Button(role: .destructive) {
                 confirmingSignOut = true
             } label: {
-                Text("disconnect")
+                Text("sign out")
                     .frame(maxWidth: .infinity)
                     .fontWeight(.bold)
             }
             .confirmationDialog(
-                "Disconnect?",
+                "Sign out?",
                 isPresented: $confirmingSignOut,
                 titleVisibility: .visible
             ) {
-                Button("Disconnect", role: .destructive) { dismiss() }
+                Button("Sign out", role: .destructive) {
+                    dismiss()
+                    // Sign-out destroys the local account: profile, photos,
+                    // chats, matches, wallet. Nothing is inherited by the
+                    // next person to sign in on this phone.
+                    auth.signOut(erasing: context)
+                }
                 Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Signing out removes your profile, photos and chats from this phone.")
+            }
+
+            Button(role: .destructive) {
+                deleteConfirmationText = ""
+                confirmingDelete = true
+            } label: {
+                Text("delete account")
+                    .frame(maxWidth: .infinity)
+                    .fontWeight(.bold)
+            }
+            .alert("Delete your account?", isPresented: $confirmingDelete) {
+                TextField("type DELETE to confirm", text: $deleteConfirmationText)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                Button("Delete forever", role: .destructive) {
+                    guard deleteConfirmationText.trimmingCharacters(in: .whitespaces)
+                        .uppercased() == "DELETE" else {
+                        // An alert button always dismisses — a wrong entry
+                        // must say so, never silently do nothing.
+                        deleteMismatch = true
+                        return
+                    }
+                    dismiss()
+                    auth.signOut(erasing: context)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently deletes your profile, photos, matches and messages from this device. There is no undo. Type DELETE to confirm.")
+            }
+            .alert("Nothing was deleted", isPresented: $deleteMismatch) {
+                Button("Try again") {
+                    deleteConfirmationText = ""
+                    confirmingDelete = true
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The confirmation didn't match. Type DELETE exactly to delete your account.")
             }
         }
         .listRowBackground(Color.clear)
@@ -209,7 +250,15 @@ struct SettingsView: View {
 
     private var ageDescription: String {
         guard let me else { return "—" }
-        return "\(me.age)"
+        return "\(me.displayAge)"
+    }
+
+    private var locationDescription: String {
+        guard let me else { return "—" }
+        if let city = me.city, let code = me.countryCode {
+            return "\(city), \(code)"
+        }
+        return me.countryCode ?? "not set"
     }
 }
 
@@ -253,5 +302,6 @@ struct BlockedUsersView: View {
 
 #Preview {
     SettingsView()
+        .environment(AuthSession())
         .modelContainer(MockData.previewContainer)
 }

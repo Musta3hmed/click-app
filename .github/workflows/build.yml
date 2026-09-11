@@ -13,6 +13,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Emoji render as boxes wherever the emoji font is unavailable (live
+      # issue in the iOS 26.3 simulator), so they are banned from Swift
+      # sources outright — including runtime-generated regional-indicator
+      # flags. UI chrome uses SF Symbols or vectors instead.
+      - name: Ban emoji in Swift sources
+        run: |
+          set -e
+          MATCHES=$(perl -CSD -ne 'print "$ARGV:$.: $_" if /[\x{1F000}-\x{1FAFF}\x{1F1E6}-\x{1F1FF}\x{2600}-\x{27BF}\x{FE0E}\x{FE0F}\x{2B00}-\x{2BFF}\x{231A}-\x{231B}\x{2328}\x{23E9}-\x{23FA}\x{203C}\x{2049}\x{20E3}\x{24C2}\x{3030}\x{303D}\x{3297}\x{3299}]/; close ARGV if eof' $(find Click ClickTests ClickUITests -name '*.swift') || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Emoji found in Swift sources (they render as boxes on some targets):"
+            echo "$MATCHES"
+            exit 1
+          fi
+
       - name: Select newest Xcode
         run: |
           ls /Applications | grep -i xcode || true
@@ -22,7 +36,7 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          xcodebuild build \
+          xcodebuild build-for-testing \
             -project Click.xcodeproj \
             -scheme Click \
             -destination 'generic/platform=iOS Simulator' \

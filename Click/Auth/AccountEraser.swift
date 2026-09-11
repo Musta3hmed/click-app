@@ -1,0 +1,66 @@
+//
+//  AccountEraser.swift
+//  Click
+//
+//  Destroys every trace of the signed-in account on this device. Used by
+//  sign-out AND account deletion — on a shared or resold phone the next
+//  person must never inherit the previous user's identity, DOB, photos or
+//  messages (that inheritance was also a full 18+ gate bypass).
+//
+
+import Foundation
+import SwiftData
+
+enum AccountEraser {
+
+    /// Delete the current user's profile (photos cascade), all conversations
+    /// and messages, matches, wallet, bingo boards; reset daily-reward and
+    /// booster progress; clear the onboarding flags. Seeded candidate
+    /// profiles stay — they are demo content, not user data.
+    @MainActor
+    static func eraseCurrentAccount(in context: ModelContext) {
+        let currentUsers = (try? context.fetch(
+            FetchDescriptor<UserProfile>(predicate: #Predicate { $0.isCurrentUser })
+        )) ?? []
+        for user in currentUsers {
+            context.delete(user)  // ProfilePhoto rows cascade.
+        }
+
+        for conversation in (try? context.fetch(FetchDescriptor<Conversation>())) ?? [] {
+            context.delete(conversation)  // Messages cascade.
+        }
+        for match in (try? context.fetch(FetchDescriptor<Match>())) ?? [] {
+            context.delete(match)
+        }
+        for wallet in (try? context.fetch(FetchDescriptor<Wallet>())) ?? [] {
+            context.delete(wallet)
+        }
+        for board in (try? context.fetch(FetchDescriptor<BingoBoard>())) ?? [] {
+            context.delete(board)
+        }
+        for reward in (try? context.fetch(FetchDescriptor<DailyReward>())) ?? [] {
+            reward.isClaimed = false
+            reward.claimedAt = nil
+        }
+        for inventory in (try? context.fetch(FetchDescriptor<BoosterInventory>())) ?? [] {
+            inventory.count = 0
+        }
+
+        // Block/mute/report state lives ON the candidate rows — it is the
+        // previous user's behavioural data and must not be inherited by the
+        // next account (who would see a blocklist they never made).
+        for candidate in (try? context.fetch(FetchDescriptor<UserProfile>())) ?? [] {
+            candidate.isBlocked = false
+            candidate.isMuted = false
+            candidate.reportedReasonRaw = nil
+            candidate.reportedAt = nil
+        }
+
+        try? context.save()
+
+        let defaults = UserDefaults.standard
+        defaults.set(false, forKey: "onboardingCompleted")
+        defaults.set(0, forKey: "onboardingStep")
+        defaults.set(false, forKey: "welcomePopupShown")
+    }
+}
