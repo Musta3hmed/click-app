@@ -84,7 +84,7 @@ struct ConversationView: View {
                     .font(.system(size: 17, weight: .heavy))
                     .foregroundStyle(Theme.onPrimary)
                     .frame(width: 40, height: 40)
-                    .background(Circle().fill(canSend ? Theme.primary : Theme.separator))
+                    .background(Circle().fill(canSend ? Theme.primary : Theme.fillDisabled))
             }
             .buttonStyle(.plain)
             .disabled(!canSend)

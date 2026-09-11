@@ -354,7 +354,7 @@ private struct DailyRewardCard: View {
         }
         .padding(.top, 12)
         .frame(width: 104)
-        .background(canCollect ? Theme.surface : Theme.separator.opacity(0.45))
+        .background(canCollect ? Theme.surface : Theme.fillDisabled.opacity(0.75))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             if canCollect {

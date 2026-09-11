@@ -133,7 +133,13 @@ struct GlassCapsule<Content: View>: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(.ultraThinMaterial, in: Capsule())
+        // The header stays warm in dark mode, but .ultraThinMaterial flips
+        // dark and turned these capsules into smudges — pin the glass light
+        // so it survives the theme switch.
+        .background {
+            Capsule().fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .light)
+        }
         .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1))
     }
 }
@@ -153,9 +159,14 @@ struct GlassCircleButton: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 42, height: 42)
-                .background(.ultraThinMaterial, in: Circle())
+                // Pinned light for the same reason as GlassCapsule.
+                .background {
+                    Circle().fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .light)
+                }
                 .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1))
         }
+        .buttonStyle(.clickSilent)
         .accessibilityLabel(accessibilityTitle)
     }
 }

@@ -55,7 +55,9 @@ struct RootView: View {
     /// gradient — restore can take a moment on weak signal.
     private var launchPlaceholder: some View {
         ZStack {
-            Theme.brandGradient.ignoresSafeArea()
+            // launchGradient: full brand in light, warm near-dark in dark —
+            // no orange flash into a black app.
+            Theme.launchGradient.ignoresSafeArea()
             VStack(spacing: 20) {
                 ClickLogoView(size: 96)
                 ProgressView()
@@ -70,7 +72,7 @@ struct RootView: View {
 
     private var mainShell: some View {
         ZStack(alignment: .bottom) {
-            Theme.background.ignoresSafeArea()
+            Theme.backgroundWash.ignoresSafeArea()
 
             Group {
                 switch selection {

@@ -53,7 +53,7 @@ struct PillButton: View {
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
                 .background(
-                    Capsule().fill(isEnabled ? Theme.primary : Theme.separator)
+                    Capsule().fill(isEnabled ? Theme.primary : Theme.fillDisabled)
                 )
         }
         .buttonStyle(.click)

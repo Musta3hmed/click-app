@@ -189,7 +189,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 // Plain Color is animatable; AnyShapeStyle erasure wasn't.
-                .background(canContinue ? Theme.primary : Theme.separator, in: Capsule())
+                .background(canContinue ? Theme.primary : Theme.fillDisabled, in: Capsule())
         }
         .buttonStyle(.click)
         .disabled(!canContinue)

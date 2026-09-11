@@ -142,7 +142,7 @@ struct BingoView: View {
                     .foregroundStyle(canAfford ? Theme.onPrimary : Theme.secondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
-                    .background(canAfford ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.separator), in: Capsule())
+                    .background(canAfford ? Theme.primary : Theme.fillDisabled, in: Capsule())
             }
             .buttonStyle(.click)
             .disabled(!canAfford)

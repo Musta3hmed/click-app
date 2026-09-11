@@ -240,7 +240,8 @@ struct SwipeView: View {
                 .symbolEffect(.bounce, value: bounce)
                 .frame(width: size, height: size)
                 .background(Circle().fill(Theme.surface))
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                .overlay(Circle().strokeBorder(Theme.glowStroke, lineWidth: 1))
+                .shadow(color: Theme.shadowColor, radius: 8, y: 4)
         }
         .buttonStyle(.click)
         .accessibilityLabel(label)
@@ -269,7 +270,7 @@ struct SwipeView: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Theme.onPrimary)
                     .frame(width: 44, height: 44)
-                    .background(canSendOpener ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.separator), in: Circle())
+                    .background(canSendOpener ? Theme.primary : Theme.fillDisabled, in: Circle())
             }
             .buttonStyle(.click)
             .disabled(!canSendOpener)
@@ -445,9 +446,9 @@ private struct MatchCelebrationView: View {
 
     var body: some View {
         ZStack {
+            // Opaque: at 0.96 four percent of the dark app bled through.
             Theme.brandGradient
                 .ignoresSafeArea()
-                .opacity(0.96)
 
             if !reduceMotion {
                 ConfettiView()
@@ -536,7 +537,7 @@ private struct SwipeCard: View {
 
             // Bottom scrim so the text always reads over a photo.
             LinearGradient(
-                colors: [.clear, .black.opacity(0.65)],
+                colors: [.clear, Theme.cardScrim],
                 startPoint: .center,
                 endPoint: .bottom
             )
@@ -571,7 +572,12 @@ private struct SwipeCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous))
-        .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
+        // Edge stroke keeps the card's silhouette readable on OLED.
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous)
+                .strokeBorder(Theme.glowStroke, lineWidth: 1)
+        )
+        .shadow(color: Theme.shadowColor, radius: 16, y: 8)
         .task(id: profile.id) {
             photos = profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
             photoIndex = 0
