@@ -12,7 +12,6 @@ final class UserProfile {
     var name: String
     var age: Int
     var bio: String
-    var countryFlag: String
     var zodiacRaw: String
     var interests: [String]
     var isVerified: Bool
@@ -21,6 +20,12 @@ final class UserProfile {
     /// True for the single row representing the signed-in user.
     var isCurrentUser: Bool
 
+    /// For the current-user row: the AuthResult.providerUserID that owns it.
+    /// Onboarding refuses to reuse a row whose owner doesn't match the
+    /// signed-in credential — the backstop against inheriting a previous
+    /// account's identity on a shared phone.
+    var ownerProviderID: String?
+
     // MARK: Onboarding answers
     // Nil/default until onboarding fills them in. Seeded mock profiles get
     // a gender so the deck filter has something to bite on.
@@ -28,12 +33,14 @@ final class UserProfile {
     var birthDate: Date?
     var genderRaw: String?
     /// The signed-in user's "who I want to meet" answer(s).
-    var seekingRaw: [String]
+    /// Declared default so lightweight migration from older stores succeeds.
+    var seekingRaw: [String] = []
 
     // Coarse location only — city-level, never precise coordinates.
     var city: String?
     var country: String?
-    /// ISO 3166-1 alpha-2, e.g. "AU". Drives `countryFlag`.
+    /// ISO 3166-1 alpha-2, e.g. "AU". Rendered as a text badge — flag emoji
+    /// are banned because they render as boxes where the emoji font is missing.
     var countryCode: String?
 
     @Relationship(deleteRule: .cascade, inverse: \ProfilePhoto.owner)
@@ -54,7 +61,7 @@ final class UserProfile {
         name: String,
         age: Int,
         bio: String = "",
-        countryFlag: String = "🇦🇺",
+        countryCode: String? = nil,
         zodiac: Zodiac = .aquarius,
         interests: [String] = [],
         isVerified: Bool = false,
@@ -69,7 +76,6 @@ final class UserProfile {
         self.name = name
         self.age = age
         self.bio = bio
-        self.countryFlag = countryFlag
         self.zodiacRaw = zodiac.rawValue
         self.interests = interests
         self.isVerified = isVerified
@@ -84,7 +90,8 @@ final class UserProfile {
         self.seekingRaw = []
         self.city = nil
         self.country = nil
-        self.countryCode = nil
+        self.countryCode = countryCode
+        self.ownerProviderID = nil
         self.photos = []
         self.createdAt = createdAt
     }
@@ -120,15 +127,6 @@ final class UserProfile {
 
     static func age(from birthDate: Date, on date: Date = .now) -> Int {
         Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
-    }
-
-    /// Regional-indicator flag for an ISO 3166-1 alpha-2 code.
-    static func flag(forCountryCode code: String) -> String {
-        code.uppercased().unicodeScalars.reduce(into: "") { flag, scalar in
-            if let indicator = UnicodeScalar(127397 + scalar.value) {
-                flag.unicodeScalars.append(indicator)
-            }
-        }
     }
 }
 

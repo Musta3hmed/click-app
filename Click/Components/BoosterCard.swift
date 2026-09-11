@@ -63,8 +63,10 @@ struct BoosterCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 14)
-        .cardSurface(radius: 20)
-        .accessibilityElement(children: .combine)
+        .cardSurface(radius: Theme.Metric.control)
+        // .contain, not .combine — combining swallowed the buy button so
+        // VoiceOver could never activate it.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(count) \(kind.label)")
     }
 }

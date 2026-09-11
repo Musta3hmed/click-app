@@ -42,6 +42,22 @@ struct PhotosStep: View {
                         move(idString: idString, before: photo)
                         return true
                     }
+                    // Non-drag path so VoiceOver (and everyone else) can set
+                    // the main photo without a drag gesture.
+                    .contextMenu {
+                        if photo.sortIndex != 0 {
+                            Button {
+                                makeMain(photo)
+                            } label: {
+                                Label("Make main photo", systemImage: "star.fill")
+                            }
+                        }
+                        Button(role: .destructive) {
+                            delete(photo)
+                        } label: {
+                            Label("Remove photo", systemImage: "trash")
+                        }
+                    }
                 }
 
                 if profile.photos.count < maxPhotos {
@@ -52,12 +68,15 @@ struct PhotosStep: View {
                     ) {
                         addTile
                     }
+                    // One import at a time — a concurrent run would hand out
+                    // overlapping sortIndex values (two "main" photos).
+                    .disabled(isImporting)
                     .accessibilityLabel("Add photos")
                 }
             }
 
             if isImporting {
-                ProgressView("adding…")
+                ProgressView("adding photos…")
                     .font(.clickPlain(.footnote, weight: .medium))
             }
 
@@ -66,8 +85,6 @@ struct PhotosStep: View {
                     .font(.clickPlain(.footnote, weight: .medium))
                     .foregroundStyle(Theme.accent)
             }
-
-            Spacer(minLength: 0)
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
@@ -96,6 +113,8 @@ struct PhotosStep: View {
         isImporting = true
         importFailed = false
         Task {
+            // Sign-out can delete the row while an import is in flight.
+            guard !profile.isDeleted else { return }
             var nextIndex = (profile.orderedPhotos.last?.sortIndex ?? -1) + 1
             var anyFailed = false
 
@@ -143,6 +162,17 @@ struct PhotosStep: View {
         }
         try? context.save()
         Haptics.impact(.light)
+    }
+
+    private func makeMain(_ photo: ProfilePhoto) {
+        var ordered = profile.orderedPhotos
+        ordered.removeAll { $0.id == photo.id }
+        ordered.insert(photo, at: 0)
+        for (index, item) in ordered.enumerated() {
+            item.sortIndex = index
+        }
+        try? context.save()
+        Haptics.notify(.success)
     }
 }
 
@@ -219,10 +249,15 @@ struct LocationStep: View {
             case .denied:
                 deniedCard
             case .failed(let message):
-                Text(message)
-                    .font(.clickPlain(.footnote, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-                    .multilineTextAlignment(.center)
+                // A transient failure must keep the retry alive — one flaky
+                // geocode must never remove the button permanently.
+                VStack(spacing: 10) {
+                    Text(message)
+                        .font(.clickPlain(.footnote, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                        .multilineTextAlignment(.center)
+                    locateButton
+                }
             }
 
             if showManualEntry || service.phase == .denied || isFailedPhase {
@@ -236,7 +271,7 @@ struct LocationStep: View {
                 .accessibilityLabel("Enter my city manually")
             }
 
-            Spacer(minLength: 0)
+
         }
         .onChange(of: service.phase) { _, phase in
             if case .located(let place) = phase {
@@ -267,8 +302,7 @@ struct LocationStep: View {
 
     private func confirmedCard(city: String, country: String) -> some View {
         HStack(spacing: 10) {
-            Text(profile.countryFlag)
-                .font(.system(size: 30))
+            CountryBadge(code: profile.countryCode)
             VStack(alignment: .leading, spacing: 2) {
                 Text(city)
                     .font(.click(.headline, weight: .bold))
@@ -277,18 +311,21 @@ struct LocationStep: View {
                     .font(.clickPlain(.footnote, weight: .medium))
                     .foregroundStyle(Theme.secondary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Location: \(city), \(country)")
             Spacer()
+            // Not swallowed into a .combine wrapper — the change button must
+            // stay individually reachable for VoiceOver.
             Button("change") {
                 showManualEntry = true
             }
             .font(.clickPlain(.footnote, weight: .semibold))
             .foregroundStyle(Theme.secondary)
+            .frame(minHeight: 44)
             .accessibilityLabel("Change location")
         }
         .padding(16)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Location: \(city), \(country)")
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
     }
 
     private var deniedCard: some View {
@@ -311,7 +348,7 @@ struct LocationStep: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
     }
 
     private var manualEntry: some View {
@@ -345,10 +382,11 @@ struct LocationStep: View {
     // MARK: Persistence
 
     private func save(_ place: CoarsePlace) {
+        // Sign-out can delete the row while a geocode is in flight.
+        guard !profile.isDeleted else { return }
         profile.city = place.city
         profile.country = place.country
         profile.countryCode = place.countryCode
-        profile.countryFlag = UserProfile.flag(forCountryCode: place.countryCode)
         try? context.save()
         showManualEntry = false
         Haptics.notify(.success)

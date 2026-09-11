@@ -73,7 +73,7 @@ struct FloatingTabBar: View {
                         Text(badge > 99 ? "99+" : "\(badge)")
                             .contentTransition(.numericText())
                             .animation(.snappy, value: badge)
-                            .font(.system(size: 10, weight: .heavy))
+                            .font(.clickPlain(.caption2, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -83,9 +83,13 @@ struct FloatingTabBar: View {
                 }
 
                 if isSelected {
+                    // No .fixedSize() here: at accessibility text sizes it
+                    // pushed the capsule wider than the window and clipped
+                    // every screen (the FolderTabs bug, same pattern).
                     Text(tab.label)
                         .font(.click(.subheadline, weight: .heavy))
-                        .fixedSize()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                         .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)))
                 }
             }

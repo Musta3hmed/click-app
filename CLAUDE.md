@@ -76,15 +76,31 @@ user's seeking preference; coins are vector smileys (CoinView).
 Source layout inside `Click/`:
 
 ```
-Auth/        AuthProvider, AuthSession, KeychainStore, Apple/Google/Mock providers
+Auth/        AuthProvider, AuthSession, KeychainStore, AccountEraser,
+             Apple/Google/Mock providers
 Support/     Theme.swift (all design tokens), Haptics, SafetyCenter,
              LocationService, ImageProcessing, ClickButtonStyle
-Components/  Reusable views (incl. CoinView, ConfettiView) — build new UI from these
+Components/  Reusable views (CoinView, ConfettiView, ClickLogoView,
+             CountryBadge, …) — build new UI from these
 Models/      SwiftData @Model types + AppSchema (schema source of truth)
-Mock/        MockData.swift — replace wholesale when a backend lands
-Screens/     RootView, WelcomeView, Onboarding/, ChatsView, SwipeView,
-             ProfileView, ConversationView, SettingsView
+Mock/        MockData.swift + DemoPhotos.swift (runtime AI-face fetch)
+Screens/     RootView, WelcomeView, WelcomeCelebrationView, Onboarding/,
+             ChatsView, SwipeView, BingoView, ProfileView, ConversationView,
+             SettingsView
 ```
+
+Hard rules added in phase 3:
+
+- **No emoji anywhere in Swift sources** — CI fails the build. They render
+  as boxes where the emoji font is missing. Use SF Symbols or vectors;
+  country flags are `CountryBadge` ISO-code pills.
+- **Sign-out and account deletion go through `AuthSession.signOut(erasing:)`**
+  → `AccountEraser`. Never leave the current-user row behind; it is bound to
+  `ownerProviderID`.
+- **No paid surfaces** (offers/subscription/coin store) without a decision —
+  they were deliberately removed. Coins are earned (daily rewards, bingo)
+  and spent (boosters, bingo claims) only.
+- The report sheet's copy must stay honest: there is NO moderation backend.
 
 Conventions that matter:
 

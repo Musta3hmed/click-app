@@ -10,6 +10,7 @@ struct ConversationView: View {
     let conversation: Conversation
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
 
     var body: some View {
@@ -30,6 +31,11 @@ struct ConversationView: View {
         .onAppear {
             conversation.unreadCount = 0
             try? context.save()
+        }
+        // Blocking mid-conversation must take effect where it happened:
+        // pop the screen instead of leaving the thread readable.
+        .onChange(of: conversation.participant?.isBlocked) { _, isBlocked in
+            if isBlocked == true { dismiss() }
         }
     }
 
@@ -82,6 +88,7 @@ struct ConversationView: View {
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && conversation.isVisible
     }
 
     private func send() {

@@ -2,6 +2,10 @@
 //  ProfileView.swift
 //  Click
 //
+//  Identity, daily bingo, boosters, daily reward streak, referral. The
+//  paid surfaces (offers, subscription, coin store, challenges) were
+//  deliberately removed — do not reintroduce them without a decision.
+//
 
 import SwiftUI
 import SwiftData
@@ -24,39 +28,50 @@ struct ProfileView: View {
     @State private var referralCode = ""
     /// Bumped when coins are earned so the wallet coin spins.
     @State private var coinEarnTrigger = 0
-    /// Fixed end point so the countdown does not reset on every redraw.
-    @State private var offerEndsAt = Date().addingTimeInterval(24 * 60 * 60)
+    @State private var insufficientCoinsMessage: String?
 
     private var me: UserProfile? { currentUsers.first }
     private var wallet: Wallet? { wallets.first }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                header
+        // Header OUTSIDE the scroll view: its safe-area-bleeding background
+        // cannot escape a ScrollView's clipped, inset geometry, which left a
+        // background strip behind the status bar on this tab only.
+        VStack(spacing: 0) {
+            header
+            ScrollView {
                 OverlappingSheet {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
-                        offersSection
-                        boostersSection
-                        subscriptionSection
-                        coinStoreSection
-                        challengesSection
+                        bingoSection
                         dailyRewardsSection
+                        boostersSection
                         referralSection
                     }
                     .padding(.top, 20)
                     .padding(.bottom, 8)
                 }
+                .tabBarClearance()
             }
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
-        .tabBarClearance()
-        .ignoresSafeArea(edges: .top)
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
+        .alert(
+            "Not enough coins",
+            isPresented: Binding(
+                get: { insufficientCoinsMessage != nil },
+                set: { if !$0 { insufficientCoinsMessage = nil } }
+            )
+        ) {
+            Button("OK") { insufficientCoinsMessage = nil }
+        } message: {
+            Text(insufficientCoinsMessage ?? "")
+        }
+        .task { resetRewardCycleIfFinished() }
     }
 
     // MARK: - Header
@@ -67,7 +82,7 @@ struct ProfileView: View {
                 Spacer()
                 GlassCapsule {
                     CoinView(size: 20, earnTrigger: coinEarnTrigger)
-                    Text("\(wallet?.coins ?? 0)")
+                    Text((wallet?.coins ?? 0).formatted())
                         .font(.click(.subheadline, weight: .heavy))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
@@ -88,59 +103,42 @@ struct ProfileView: View {
 
     private var identityBlock: some View {
         VStack(spacing: 12) {
-            // Half in the header, half in the sheet — a deliberate straddle,
-            // with matching negative padding so the flow below stays even.
+            // Half in the header, half in the sheet — a deliberate straddle.
+            // 116pt (not 132) so it clears the coin capsule on a 375pt screen.
             StickerAvatar(
                 name: me?.name ?? "You",
-                size: 132,
+                size: 116,
                 badgeNumber: me?.displayAge,
                 isVerified: me?.isVerified ?? false
             )
-            .offset(y: -66 - Theme.Metric.sheetOverlap / 2)
-            .padding(.bottom, -(66 - 8) - Theme.Metric.sheetOverlap / 2)
+            .offset(y: -58 - Theme.Metric.sheetOverlap / 2)
+            .padding(.bottom, -(58 - 8) - Theme.Metric.sheetOverlap / 2)
 
             HStack(spacing: 8) {
-                Text(me?.countryFlag ?? "🇦🇺")
-                Text(me?.zodiac.symbol ?? "♒️")
-                Text(me?.zodiac.label ?? "Aquarius")
+                CountryBadge(code: me?.countryCode)
+                Text(me?.zodiac.label ?? "")
                     .font(.click(.headline, weight: .bold))
                     .foregroundStyle(Theme.primary)
+                if let city = me?.city {
+                    Text(city)
+                        .font(.clickPlain(.subheadline, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                }
             }
-            .font(.system(size: 19))
 
             PillButton(title: "edit profile") {}
         }
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Offers
+    // MARK: - Bingo
 
-    private var offersSection: some View {
+    private var bingoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("offers")
-                .padding(.horizontal, Theme.Metric.gutter)
-
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    OfferCard(
-                        title: "Royal Offer",
-                        subtitle: "Limited-Time Steal!",
-                        endsAt: offerEndsAt,
-                        tint: [Theme.coin, Theme.coinDark]
-                    )
-                    OfferCard(
-                        title: "Starter Pack",
-                        subtitle: "First-timers only",
-                        endsAt: offerEndsAt.addingTimeInterval(3_600),
-                        tint: [Theme.brandViolet, Theme.violetDark]
-                    )
-                }
-                .padding(.horizontal, Theme.Metric.gutter)
-                .scrollTargetLayout()
-            }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
+            SectionHeader("daily bingo")
+            BingoView(coinEarnTrigger: $coinEarnTrigger)
         }
+        .padding(.horizontal, Theme.Metric.gutter)
     }
 
     // MARK: - Boosters
@@ -154,7 +152,9 @@ struct ProfileView: View {
                 spacing: 12
             ) {
                 ForEach(orderedBoosters) { inventory in
-                    BoosterCard(kind: inventory.kind, count: inventory.count) {}
+                    BoosterCard(kind: inventory.kind, count: inventory.count) {
+                        buyBooster(inventory)
+                    }
                 }
             }
         }
@@ -169,57 +169,43 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Subscription
+    private static let boosterPrice = 25
 
-    private var subscriptionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("subscription")
-            SubscriptionCard(isSubscriber: wallet?.isSubscriber ?? false)
+    /// A real purchase, not a silent no-op: insufficient balance says so.
+    private func buyBooster(_ inventory: BoosterInventory) {
+        let wallet = Wallet.ensure(in: context)
+        guard wallet.coins >= Self.boosterPrice else {
+            insufficientCoinsMessage = "A \(inventory.kind.label) costs \(Self.boosterPrice) coins — you have \(wallet.coins). Earn more with daily rewards and bingo."
+            Haptics.notify(.error)
+            return
         }
-        .padding(.horizontal, Theme.Metric.gutter)
-    }
-
-    // MARK: - Coin store
-
-    private var coinStoreSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("coins")
-
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                spacing: 12
-            ) {
-                ForEach(CoinPack.catalog) { pack in
-                    CoinPackCard(pack: pack)
-                }
-            }
-        }
-        .padding(.horizontal, Theme.Metric.gutter)
-    }
-
-    // MARK: - Challenges
-
-    private var challengesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("challenges")
-            ChallengeCard()
-        }
-        .padding(.horizontal, Theme.Metric.gutter)
+        wallet.coins -= Self.boosterPrice
+        inventory.count += 1
+        try? context.save()
+        Haptics.notify(.success)
     }
 
     // MARK: - Daily rewards
 
     private var dailyRewardsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("daily rewards")
-                .padding(.horizontal, Theme.Metric.gutter)
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader("daily rewards")
+                if let streak = wallet?.currentStreak, streak > 1 {
+                    Text("\(streak)-day streak")
+                        .font(.click(.footnote, weight: .heavy))
+                        .foregroundStyle(Theme.brandPink)
+                }
+            }
+            .padding(.horizontal, Theme.Metric.gutter)
 
             ScrollView(.horizontal) {
                 HStack(spacing: 10) {
                     ForEach(dailyRewards) { reward in
                         DailyRewardCard(
                             reward: reward,
-                            isActive: reward.day == activeRewardDay
+                            isActive: reward.day == activeRewardDay,
+                            isClaimableToday: !claimedToday
                         ) {
                             claim(reward)
                         }
@@ -236,14 +222,53 @@ struct ProfileView: View {
         dailyRewards.first(where: { !$0.isClaimed })?.day ?? 0
     }
 
+    /// One claim per calendar day — this is what stops the whole track being
+    /// farmed in a single sitting.
+    private var claimedToday: Bool {
+        dailyRewards.contains {
+            guard let claimedAt = $0.claimedAt else { return false }
+            return Calendar.current.isDateInToday(claimedAt)
+        }
+    }
+
     private func claim(_ reward: DailyReward) {
-        guard !reward.isClaimed else { return }
+        guard !reward.isClaimed, !claimedToday else { return }
+
+        // Credit BEFORE consuming, and never against a nil wallet or a
+        // missing inventory row.
+        let wallet = Wallet.ensure(in: context)
+        wallet.coins += reward.coinValue
+        if let kind = reward.boosterKind {
+            BoosterInventory.ensure(kind, in: context).count += 1
+        }
+
+        // Streak: consecutive calendar days; a gap resets to 1.
+        if let last = wallet.lastClaimAt,
+           let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: .now),
+           Calendar.current.isDate(last, inSameDayAs: yesterday) {
+            wallet.currentStreak += 1
+        } else {
+            wallet.currentStreak = 1
+        }
+        wallet.lastClaimAt = .now
+
         reward.isClaimed = true
         reward.claimedAt = .now
-        wallet?.coins += reward.coinValue
         try? context.save()
         coinEarnTrigger += 1
         Haptics.notify(.success)
+    }
+
+    /// After day 7 is claimed, the track restarts the NEXT day — without
+    /// this the section dies permanently.
+    private func resetRewardCycleIfFinished() {
+        guard !dailyRewards.isEmpty, dailyRewards.allSatisfy(\.isClaimed) else { return }
+        guard !claimedToday else { return }
+        for reward in dailyRewards {
+            reward.isClaimed = false
+            reward.claimedAt = nil
+        }
+        try? context.save()
     }
 
     // MARK: - Referral
@@ -267,7 +292,7 @@ struct ProfileView: View {
                     isEnabled: !referralCode.trimmingCharacters(in: .whitespaces).isEmpty,
                     horizontalPadding: 20
                 ) {
-                    wallet?.referralCodeUsed = referralCode
+                    Wallet.ensure(in: context).referralCodeUsed = referralCode
                     referralCode = ""
                     try? context.save()
                 }
@@ -277,234 +302,27 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - Offer card
-
-private struct OfferCard: View {
-    let title: String
-    let subtitle: String
-    let endsAt: Date
-    let tint: [Color]
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            LinearGradient(colors: tint, startPoint: .topLeading, endPoint: .bottomTrailing)
-
-            TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                Text(countdown(to: endsAt, from: timeline.date))
-                    .font(.click(.subheadline, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .padding(12)
-                    .monospacedDigit()
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Spacer()
-                Text(title)
-                    .font(.click(.title2, weight: .heavy))
-                Text(subtitle)
-                    .font(.click(.subheadline, weight: .bold))
-                    .opacity(0.9)
-            }
-            .foregroundStyle(.white)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text("Shop now")
-                        .font(.click(.subheadline, weight: .heavy))
-                        .foregroundStyle(Theme.primary)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Capsule().fill(Color.white))
-                }
-            }
-            .padding(16)
-        }
-        .frame(width: 300, height: 150)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(subtitle).")
-    }
-
-    private func countdown(to end: Date, from now: Date) -> String {
-        let remaining = max(0, end.timeIntervalSince(now))
-        let hours = Int(remaining) / 3600
-        let minutes = (Int(remaining) % 3600) / 60
-        let seconds = Int(remaining) % 60
-        return "Ends in \(hours)h \(minutes)m \(seconds)s"
-    }
-}
-
-// MARK: - Subscription card
-
-private struct SubscriptionCard: View {
-    let isSubscriber: Bool
-
-    private let perks = [
-        ("circle.fill", "1000 Coins /wk"),
-        ("lock.open.fill", "Unlimited Reveal"),
-        ("arrow.uturn.backward", "Unlimited Rewinds"),
-        ("plus.circle.fill", "+ 5 more")
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("click infinity")
-                    .font(.click(.title2, weight: .heavy))
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(isSubscriber ? "Active" : "Get Infinity")
-                    .font(.click(.subheadline, weight: .heavy))
-                    .foregroundStyle(Theme.primary)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(Capsule().fill(Color.white))
-            }
-
-            LazyVGrid(
-                columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                ForEach(perks, id: \.1) { perk in
-                    Label {
-                        Text(perk.1)
-                    } icon: {
-                        if perk.0 == "circle.fill" {
-                            CoinView(size: 15)
-                        } else {
-                            Image(systemName: perk.0)
-                        }
-                    }
-                    .font(.clickPlain(.footnote, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                }
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.headerGradient)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous))
-    }
-}
-
-// MARK: - Coin pack card
-
-private struct CoinPackCard: View {
-    let pack: CoinPack
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("\(pack.coins)")
-                        .font(.click(.title2, weight: .heavy))
-                        .foregroundStyle(Theme.primary)
-                    Text("coins")
-                        .font(.clickPlain(.footnote, weight: .medium))
-                        .foregroundStyle(Theme.secondary)
-                }
-                Spacer()
-                CoinView(size: 26)
-            }
-
-            Text(pack.price)
-                .font(.click(.headline, weight: .heavy))
-                .foregroundStyle(Theme.onPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Capsule().fill(Theme.primary))
-        }
-        .padding(14)
-        .cardSurface(radius: 20)
-        .overlay(alignment: .topTrailing) {
-            if let discount = pack.discountPercent {
-                Text("\(discount)% off")
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Theme.accent))
-                    .offset(x: 6, y: -8)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(pack.coins) coins for \(pack.price)")
-    }
-}
-
-// MARK: - Challenge card
-
-private struct ChallengeCard: View {
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("$5,000 Challenge")
-                    .font(.click(.title3, weight: .heavy))
-                    .foregroundStyle(.white)
-                Text("complete challenges to get rewards")
-                    .font(.clickPlain(.footnote, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Start challenge")
-                    .font(.click(.subheadline, weight: .heavy))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(Capsule().fill(Color.white))
-            }
-
-            Spacer(minLength: 0)
-
-            // Stand-in for the collaged screenshots in the reference.
-            ZStack {
-                ForEach(0..<2) { index in
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Theme.brandCoral, Theme.brandViolet],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: 46, height: 84)
-                        .rotationEffect(.degrees(index == 0 ? -8 : 8))
-                        .offset(x: CGFloat(index) * 20 - 10)
-                }
-            }
-            .shadow(color: Theme.brandCoral.opacity(0.5), radius: 12)
-        }
-        .padding(18)
-        .background(Color.black)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-}
-
 // MARK: - Daily reward card
 
 private struct DailyRewardCard: View {
     let reward: DailyReward
     let isActive: Bool
+    /// False once anything was claimed today — one reward per calendar day.
+    let isClaimableToday: Bool
     let onClaim: () -> Void
+
+    private var canCollect: Bool { isActive && !reward.isClaimed && isClaimableToday }
 
     var body: some View {
         VStack(spacing: 8) {
-            if reward.coinValue > 0 && !reward.isClaimed && isActive {
+            if reward.coinValue > 0 && canCollect {
                 CoinView(size: 28, animatesIdle: true)
             } else if reward.coinValue > 0 {
                 CoinView(size: 28)
                     .saturation(reward.isClaimed || !isActive ? 0 : 1)
                     .opacity(reward.isClaimed || !isActive ? 0.5 : 1)
             } else {
-                Image(systemName: "heart.fill")
+                Image(systemName: reward.boosterKind?.systemImage ?? "gift.fill")
                     .font(.system(size: 26))
                     .foregroundStyle(iconColor)
             }
@@ -515,7 +333,7 @@ private struct DailyRewardCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
-            if isActive && !reward.isClaimed {
+            if canCollect {
                 Button(action: onClaim) {
                     Text("collect")
                         .font(.click(.caption, weight: .heavy))
@@ -524,9 +342,10 @@ private struct DailyRewardCard: View {
                         .padding(.vertical, 7)
                         .background(Theme.primary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.click)
+                .accessibilityLabel("Collect day \(reward.day) reward: \(reward.rewardLabel)")
             } else {
-                Text(reward.isClaimed ? "claimed" : "day \(reward.day)")
+                Text(statusText)
                     .font(.click(.caption, weight: .bold))
                     .foregroundStyle(Theme.secondary)
                     .frame(maxWidth: .infinity)
@@ -535,24 +354,24 @@ private struct DailyRewardCard: View {
         }
         .padding(.top, 12)
         .frame(width: 104)
-        .background(isActive && !reward.isClaimed ? Theme.surface : Theme.separator.opacity(0.45))
+        .background(canCollect ? Theme.surface : Theme.separator.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            if isActive && !reward.isClaimed {
+            if canCollect {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(Theme.primary, lineWidth: 2)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if isActive && !reward.isClaimed {
-                Circle()
-                    .fill(Theme.accent)
-                    .frame(width: 10, height: 10)
-                    .offset(x: -8, y: 8)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Day \(reward.day): \(reward.rewardLabel)")
+        // .contain, not .combine: the collect button must stay reachable as
+        // its own VoiceOver element.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Day \(reward.day): \(reward.rewardLabel)\(reward.isClaimed ? ", claimed" : "")")
+    }
+
+    private var statusText: String {
+        if reward.isClaimed { return "claimed" }
+        if isActive && !isClaimableToday { return "tomorrow" }
+        return "day \(reward.day)"
     }
 
     private var iconColor: Color {

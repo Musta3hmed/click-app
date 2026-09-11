@@ -71,9 +71,62 @@ struct ClickModelTests {
         }
     }
 
-    @Test func countryCodeConvertsToFlag() {
-        #expect(UserProfile.flag(forCountryCode: "AU") == "🇦🇺")
-        #expect(UserProfile.flag(forCountryCode: "jp") == "🇯🇵")
+    @Test func bingoBoardIsDeterministicPerDay() {
+        let a = BingoView.generateRewards(dateKey: "2026-09-12")
+        let b = BingoView.generateRewards(dateKey: "2026-09-12")
+        let c = BingoView.generateRewards(dateKey: "2026-09-13")
+        #expect(a == b, "Same day must produce the same board — no re-rolls")
+        #expect(a != c, "Different days should differ")
+        #expect(a.count == 9)
+        #expect(a.allSatisfy { BingoReward(encoded: $0) != nil })
+    }
+
+    @Test func bingoRewardPoolMatchesPublishedOdds() {
+        // Guideline 3.1.1: the odds we show must be the odds we use.
+        let rewards = BingoView.generateRewards(dateKey: "2026-01-01")
+            .compactMap(BingoReward.init(encoded:))
+        #expect(rewards.filter { $0 == .coins(10) }.count == 3)
+        #expect(rewards.filter { $0 == .coins(20) }.count == 2)
+        #expect(rewards.filter { $0 == .coins(40) }.count == 1)
+        #expect(rewards.filter { $0 == .booster(.boost) }.count == 1)
+        #expect(rewards.filter { $0 == .booster(.reveal) }.count == 1)
+        #expect(rewards.filter { $0 == .booster(.superChat) }.count == 1)
+    }
+
+    @Test func accountEraserRemovesEveryUserTrace() throws {
+        let context = try makeContext()
+        MockData.seedIfNeeded(context)
+
+        let me = UserProfile(name: "Someone", age: 20, isCurrentUser: true)
+        me.ownerProviderID = "user-a"
+        context.insert(me)
+        context.insert(ProfilePhoto(data: Data([0x01]), sortIndex: 0, owner: me))
+        context.insert(Match(profile: me))
+        context.insert(Wallet(coins: 50))
+
+        // Behavioural data on candidate rows must not survive either.
+        let candidateDescriptor = FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser }
+        )
+        let someCandidate = try #require(try context.fetch(candidateDescriptor).first)
+        SafetyCenter.block(someCandidate, in: context)
+        try context.save()
+
+        AccountEraser.eraseCurrentAccount(in: context)
+
+        #expect(!someCandidate.isBlocked, "The next account must not inherit the previous user's blocklist")
+        #expect(!someCandidate.isMuted)
+
+        let currentUsers = FetchDescriptor<UserProfile>(predicate: #Predicate { $0.isCurrentUser })
+        #expect(try context.fetchCount(currentUsers) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<ProfilePhoto>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<Conversation>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<Message>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<Match>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<Wallet>()) == 0)
+        // Candidates are demo content and must survive.
+        let candidates = FetchDescriptor<UserProfile>(predicate: #Predicate { !$0.isCurrentUser })
+        #expect(try context.fetchCount(candidates) > 20)
     }
 
     @Test func photosStayOrderedBySortIndex() throws {

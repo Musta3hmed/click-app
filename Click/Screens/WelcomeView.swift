@@ -12,13 +12,17 @@ import SwiftUI
 
 struct WelcomeView: View {
     @Environment(AuthSession.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
+    @State private var legalDocument: LegalDocument?
+    /// Hero type that still scales with Dynamic Type.
+    @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 56
 
     var body: some View {
         ZStack {
-            LavaBackground()
+            LavaBackground(animated: !reduceMotion)
 
-            FloatingStickers()
+            FloatingStickers(animated: !reduceMotion)
 
             VStack(spacing: 0) {
                 Text("click")
@@ -29,18 +33,16 @@ struct WelcomeView: View {
 
                 Spacer()
 
-                Image("Logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 110, height: 110)
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                // Vector mark — centred by construction, no baked-in corner
+                // radius fighting a clipShape, and no asset to maintain.
+                ClickLogoView(size: 110)
                     .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
-                    .scaleEffect(appeared ? 1 : 0.7)
+                    // Fade, don't zoom, under Reduce Motion.
+                    .scaleEffect(reduceMotion ? 1 : (appeared ? 1 : 0.7))
                     .padding(.bottom, 28)
-                    .accessibilityLabel("Click logo")
 
                 Text("MAKE IT\nCLICK")
-                    .font(.system(size: 56, design: .rounded).weight(.black).italic())
+                    .font(.system(size: heroSize, design: .rounded).weight(.black).italic())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
@@ -61,9 +63,16 @@ struct WelcomeView: View {
             .opacity(appeared ? 1 : 0)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.7).delay(0.1)) {
+            withAnimation(
+                reduceMotion
+                    ? .easeInOut(duration: 0.2)
+                    : .spring(response: 0.7, dampingFraction: 0.7).delay(0.1)
+            ) {
                 appeared = true
             }
+        }
+        .sheet(item: $legalDocument) { document in
+            LegalSheet(document: document)
         }
     }
 
@@ -83,10 +92,21 @@ struct WelcomeView: View {
                     .accessibilityLabel("Sign in error: \(message)")
             }
 
-            SignInButton(symbol: "apple.logo", label: "Continue with Apple", inProgress: auth.isSigningIn) {
+            // Only the tapped button spins; both stay disabled mid-flight.
+            SignInButton(
+                symbol: "apple.logo",
+                label: "Continue with Apple",
+                inProgress: auth.signingInWith == .apple,
+                disabled: auth.isSigningIn
+            ) {
                 Task { await auth.signIn(with: .apple) }
             }
-            SignInButton(symbol: "g.circle.fill", label: "Continue with Google", inProgress: auth.isSigningIn) {
+            SignInButton(
+                symbol: "g.circle.fill",
+                label: "Continue with Google",
+                inProgress: auth.signingInWith == .google,
+                disabled: auth.isSigningIn
+            ) {
                 Task { await auth.signIn(with: .google) }
             }
 
@@ -97,12 +117,82 @@ struct WelcomeView: View {
                     .padding(.top, 2)
             }
 
-            Text("By continuing you agree to our Terms & Privacy Policy.")
-                .font(.clickPlain(.caption2))
-                .foregroundStyle(.white.opacity(0.6))
-                .padding(.top, 4)
+            // Actually openable — asking users to agree to documents they
+            // cannot read is an App Review rejection.
+            HStack(spacing: 4) {
+                Text("By continuing you agree to our")
+                Button("Terms") { legalDocument = .terms }
+                    .underline()
+                Text("&")
+                Button("Privacy Policy") { legalDocument = .privacy }
+                    .underline()
+            }
+            .font(.clickPlain(.caption2))
+            .foregroundStyle(.white.opacity(0.75))
+            .padding(.top, 4)
         }
         .animation(.easeInOut(duration: 0.25), value: auth.lastErrorMessage)
+    }
+}
+
+// MARK: - Legal documents
+
+enum LegalDocument: String, Identifiable {
+    case terms
+    case privacy
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .terms: "Terms of Service"
+        case .privacy: "Privacy Policy"
+        }
+    }
+
+    /// Honest placeholder copy for the pre-release build — a real document
+    /// must land here before any public release.
+    var body: String {
+        switch self {
+        case .terms:
+            """
+            Click is in early testing. By using this build you agree to: \
+            be 18 or older; treat other people with respect; and accept that \
+            accounts, coins and boosters are test data that may be reset at \
+            any time. Coins have no monetary value and cannot be cashed out. \
+            A full Terms of Service will replace this text before public \
+            release.
+            """
+        case .privacy:
+            """
+            Click stores your profile, photos, messages and city-level \
+            location on your device only. Nothing is uploaded to a server \
+            in this build. Photos are stripped of metadata (including GPS) \
+            on import. Signing out or deleting your account removes all of \
+            this data from the device. A full Privacy Policy will replace \
+            this text before public release.
+            """
+        }
+    }
+}
+
+private struct LegalSheet: View {
+    let document: LegalDocument
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(document.body)
+                    .font(.clickPlain(.body))
+                    .foregroundStyle(Theme.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Metric.gutter)
+            }
+            .background(Theme.background)
+            .navigationTitle(document.title)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -112,6 +202,7 @@ private struct SignInButton: View {
     let symbol: String
     let label: String
     var inProgress = false
+    var disabled = false
     let action: () -> Void
 
     var body: some View {
@@ -133,8 +224,8 @@ private struct SignInButton: View {
             .background(.white, in: Capsule())
             .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
         }
-        .buttonStyle(.plain)
-        .disabled(inProgress)
+        .buttonStyle(.click)
+        .disabled(disabled || inProgress)
         .accessibilityLabel(label)
         .accessibilityHint(inProgress ? "Signing in" : "")
     }
@@ -146,9 +237,12 @@ private struct SignInButton: View {
 /// answer to Wizz's vortex. Positions are pure functions of time (sin/cos at
 /// incommensurate frequencies), so the motion loops organically forever.
 private struct LavaBackground: View {
+    /// False under Reduce Motion: the blobs freeze into a static wash.
+    var animated = true
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation(paused: !animated)) { timeline in
+            let t = animated ? timeline.date.timeIntervalSinceReferenceDate : 0
 
             GeometryReader { geo in
                 let w = geo.size.width
@@ -199,14 +293,19 @@ private struct LavaBackground: View {
 /// Wizz-style tilted sticker cards bobbing gently around the headline.
 /// SF Symbols, not emoji — emoji render as boxes in the iOS 26.3 simulator.
 private struct FloatingStickers: View {
+    /// False under Reduce Motion: stickers hold still.
+    var animated = true
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation(paused: !animated)) { timeline in
+            let t = animated ? timeline.date.timeIntervalSinceReferenceDate : 0
 
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = geo.size.height
 
+                // All y-positions stay above ~0.62h: the sign-in stack owns
+                // the bottom third, and stickers must never collide with it.
                 ZStack {
                     ChatSticker(text: "u up for a click?")
                         .rotationEffect(.degrees(-8 + 3 * sin(t * 0.8)))
@@ -214,7 +313,7 @@ private struct FloatingStickers: View {
 
                     ChatSticker(text: "no small talk", tint: Theme.online)
                         .rotationEffect(.degrees(7 + 3 * cos(t * 0.7 + 1.2)))
-                        .position(x: w * 0.30, y: h * 0.76 + 7 * cos(t * 0.8 + 0.5))
+                        .position(x: w * 0.28, y: h * 0.60 + 6 * cos(t * 0.8 + 0.5))
 
                     SymbolSticker(symbol: "face.smiling.inverse", tint: Theme.brandPink)
                         .rotationEffect(.degrees(10 + 4 * sin(t * 0.6 + 2)))
@@ -222,7 +321,7 @@ private struct FloatingStickers: View {
 
                     SymbolSticker(symbol: "bolt.fill", tint: Theme.brandViolet)
                         .rotationEffect(.degrees(-12 + 4 * cos(t * 0.65 + 0.3)))
-                        .position(x: w * 0.86, y: h * 0.66 + 8 * cos(t * 0.85 + 2.4))
+                        .position(x: w * 0.86, y: h * 0.56 + 7 * cos(t * 0.85 + 2.4))
                 }
             }
         }

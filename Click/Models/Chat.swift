@@ -43,7 +43,7 @@ final class Conversation {
     }
 
     var preview: String {
-        sortedMessages.last?.text ?? "Say hi 👋"
+        sortedMessages.last?.text ?? "Say hi"
     }
 
     /// Blocked participants drop out of every list.

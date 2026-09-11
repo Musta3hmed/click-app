@@ -59,35 +59,42 @@ struct OnboardingView: View {
     @State private var gender: Gender?
     @State private var seeking: Set<SeekingPreference> = []
     @State private var hydrated = false
+    @State private var saveErrorMessage: String?
 
     private var step: OnboardingStep {
         OnboardingStep(rawValue: storedStep.clamped(to: 0...(OnboardingStep.allCases.count - 1))) ?? .name
     }
 
-    private var profile: UserProfile? { currentUsers.first }
+    private var profile: UserProfile? { currentUsers.first { !$0.isDeleted } }
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(step.title)
-                    .font(.click(.largeTitle, weight: .heavy))
-                    .foregroundStyle(Theme.primary)
-                    .accessibilityAddTraits(.isHeader)
-                Text(step.subtitle)
-                    .font(.clickPlain(.subheadline, weight: .medium))
-                    .foregroundStyle(Theme.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.Metric.gutter)
-            .padding(.top, 24)
-            .animation(nil, value: storedStep)
+            // Scrolls so large Dynamic Type can never push content (or the
+            // wheel) out of reach; Continue stays pinned below.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(step.title)
+                            .font(.click(.largeTitle, weight: .heavy))
+                            .foregroundStyle(Theme.primary)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(step.subtitle)
+                            .font(.clickPlain(.subheadline, weight: .medium))
+                            .foregroundStyle(Theme.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(nil, value: storedStep)
 
-            stepBody
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    stepBody
+                        .frame(maxWidth: .infinity)
+                }
                 .padding(.horizontal, Theme.Metric.gutter)
-                .padding(.top, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 12)
+            }
+            .scrollDismissesKeyboard(.interactively)
 
             continueButton
                 .padding(.horizontal, Theme.Metric.gutter)
@@ -95,6 +102,17 @@ struct OnboardingView: View {
         }
         .background(Theme.background.ignoresSafeArea())
         .task { hydrate() }
+        .alert(
+            "Couldn't save",
+            isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { if !$0 { saveErrorMessage = nil } }
+            )
+        ) {
+            Button("OK") { saveErrorMessage = nil }
+        } message: {
+            Text(saveErrorMessage ?? "")
+        }
     }
 
     // MARK: - Chrome
@@ -107,7 +125,7 @@ struct OnboardingView: View {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(step == .name ? Theme.secondary.opacity(0.4) : Theme.primary)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .background(Theme.surface, in: Circle())
             }
             .disabled(step == .name)
@@ -116,6 +134,19 @@ struct OnboardingView: View {
             ProgressView(value: Double(storedStep + 1), total: Double(OnboardingStep.allCases.count))
                 .tint(Theme.brandPink)
                 .accessibilityLabel("Step \(storedStep + 1) of \(OnboardingStep.allCases.count)")
+
+            // The exit that was missing: without it, an under-18 user or a
+            // wrong-account sign-in was trapped in onboarding forever.
+            Button {
+                Haptics.selection()
+                auth.signOut(erasing: context)
+            } label: {
+                Text("sign out")
+                    .font(.clickPlain(.footnote, weight: .semibold))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(height: 44)
+            }
+            .accessibilityLabel("Sign out")
         }
         .padding(.horizontal, Theme.Metric.gutter)
         .padding(.top, 8)
@@ -127,17 +158,22 @@ struct OnboardingView: View {
         case .name:
             NameStep(name: $name)
         case .birthDate:
-            BirthDateStep(birthDate: $birthDate, touched: $birthDateTouched)
+            BirthDateStep(birthDate: $birthDate, touched: $birthDateTouched) {
+                auth.signOut(erasing: context)
+            }
         case .gender:
             GenderStep(selection: $gender)
         case .seeking:
             SeekingStep(selection: $seeking)
         case .photos:
-            if let profile {
+            // isDeleted guard: sign-out erases the row while this view may
+            // still be on screen for a transition frame — touching a deleted
+            // model's properties traps.
+            if let profile, !profile.isDeleted {
                 PhotosStep(profile: profile)
             }
         case .location:
-            if let profile {
+            if let profile, !profile.isDeleted {
                 LocationStep(profile: profile)
             }
         }
@@ -186,27 +222,46 @@ struct OnboardingView: View {
         guard !hydrated else { return }
         hydrated = true
 
-        if profile == nil {
-            // First entry: create the row now, prefilled from the credential.
+        let currentProviderID = auth.current?.providerUserID
+
+        // A leftover row that is not verifiably THIS credential's is someone
+        // else's identity — never resume it. That includes rows with a nil
+        // owner (written by older builds): treating nil as "mine" both
+        // leaked the previous user's profile and inserted a duplicate
+        // isCurrentUser row. Erase and start clean. (Sign-out also erases;
+        // this is the belt to those braces.)
+        if let existing = profile,
+           existing.ownerProviderID != currentProviderID {
+            AccountEraser.eraseCurrentAccount(in: context)
+        }
+
+        // Work with the concrete row, not the @Query result — the query does
+        // not re-fetch within this call, so reading it back right after an
+        // insert returns nil and skips the credential prefill.
+        let row: UserProfile
+        if let existing = profile, existing.ownerProviderID == currentProviderID {
+            row = existing
+        } else {
+            // First entry: create the row now, bound to the credential.
             // Apple only sends name/email once, so AuthSession captured them
             // in the Keychain — this is the moment they reach SwiftData.
-            let row = UserProfile(name: "", age: 0, isCurrentUser: true)
+            row = UserProfile(name: "", age: 0, isCurrentUser: true)
+            row.ownerProviderID = currentProviderID
             context.insert(row)
             try? context.save()
         }
 
-        if let profile {
-            name = profile.name
-            if name.isEmpty, let credentialName = auth.current?.name {
-                name = String(credentialName.split(separator: " ").first ?? "")
-            }
-            if let stored = profile.birthDate {
-                birthDate = stored
-                birthDateTouched = true
-            }
-            gender = profile.gender
-            seeking = Set(profile.seeking)
+        name = row.name
+        if name.isEmpty, let credentialName = auth.current?.name {
+            name = String(credentialName.split(separator: " ").first ?? "")
         }
+        if let stored = row.birthDate {
+            // Resuming this same credential's own mid-onboarding answers.
+            birthDate = stored
+            birthDateTouched = true
+        }
+        gender = row.gender
+        seeking = Set(row.seeking)
     }
 
     private func advance() {
@@ -227,7 +282,15 @@ struct OnboardingView: View {
         case .photos, .location:
             break  // Those steps save into the profile as they go.
         }
-        try? context.save()
+
+        do {
+            try context.save()
+        } catch {
+            // A failed save (full disk) must not wave the user through with
+            // a half-written profile.
+            saveErrorMessage = "Couldn't save your answer — free up some space and try again."
+            return
+        }
 
         if step == .location {
             onboardingCompleted = true
@@ -271,7 +334,7 @@ private struct NameStep: View {
                 .focused($focused)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
                 .accessibilityLabel("First name")
 
             Text("\(name.count)/30")
@@ -279,7 +342,6 @@ private struct NameStep: View {
                 .foregroundStyle(Theme.secondary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
         .onAppear { focused = true }
         .onChange(of: name) { _, newValue in
             if newValue.count > 30 { name = String(newValue.prefix(30)) }
@@ -292,49 +354,104 @@ private struct NameStep: View {
 private struct BirthDateStep: View {
     @Binding var birthDate: Date
     @Binding var touched: Bool
+    let onSignOut: () -> Void
+
+    /// Once an under-18 date is confirmed this becomes a terminal screen,
+    /// not a live picker to fiddle with. "I picked the wrong date" reveals
+    /// the picker again for honest mis-scrolls and stays revealed (an
+    /// auto-re-trigger here once locked users into an unescapable loop);
+    /// sign out is the real exit. Continue remains hard-disabled under 18
+    /// either way — this state is presentation, not the gate.
+    @State private var showingRejection = false
+    @State private var rejectionDismissed = false
 
     private var age: Int { UserProfile.age(from: birthDate) }
 
     var body: some View {
         VStack(spacing: 20) {
-            DatePicker(
-                "Date of birth",
-                selection: Binding(
-                    get: { birthDate },
-                    set: { birthDate = $0; touched = true }
-                ),
-                in: ...Date.now,
-                displayedComponents: .date
-            )
-            .datePickerStyle(.wheel)
-            .labelsHidden()
-            .accessibilityLabel("Date of birth")
+            if showingRejection {
+                rejectionCard
+            } else {
+                DatePicker(
+                    "Date of birth",
+                    selection: Binding(
+                        get: { birthDate },
+                        set: {
+                            birthDate = $0
+                            touched = true
+                            if UserProfile.age(from: $0) < 18 && !rejectionDismissed {
+                                showingRejection = true
+                            }
+                        }
+                    ),
+                    in: ...Date.now,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .accessibilityLabel("Date of birth")
 
-            if touched {
-                if age >= 18 {
+                if !touched {
+                    // Continue stays disabled until the wheel moves; say so.
+                    Label("scroll the wheel to set your birthday", systemImage: "hand.point.up.left.fill")
+                        .font(.clickPlain(.footnote, weight: .semibold))
+                        .foregroundStyle(Theme.secondary)
+                } else if age >= 18 {
                     Label("you're \(age) — you're in", systemImage: "checkmark.circle.fill")
                         .font(.click(.headline, weight: .bold))
                         .foregroundStyle(Theme.online)
                 } else {
-                    // The hard gate. Continue stays disabled while under 18.
-                    VStack(spacing: 6) {
-                        Label("Click is for 18 and over", systemImage: "hand.raised.fill")
-                            .font(.click(.headline, weight: .bold))
-                            .foregroundStyle(Theme.accent)
-                        Text("You can't use Click yet. Come back when you're 18 — we'll be here.")
-                            .font(.clickPlain(.subheadline, weight: .medium))
-                            .foregroundStyle(Theme.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .accessibilityElement(children: .combine)
+                    Label("Click is for 18 and over — you can't continue with this date", systemImage: "hand.raised.fill")
+                        .font(.clickPlain(.footnote, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .multilineTextAlignment(.center)
                 }
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .animation(.easeInOut(duration: 0.2), value: age >= 18)
+        .animation(.easeInOut(duration: 0.2), value: showingRejection)
+        .onAppear {
+            // Resuming the step with a stored under-18 date lands on the
+            // terminal card, not a live picker.
+            if touched && age < 18 && !rejectionDismissed {
+                showingRejection = true
+            }
+        }
+    }
+
+    private var rejectionCard: some View {
+        VStack(spacing: 12) {
+            Label("Click is for 18 and over", systemImage: "hand.raised.fill")
+                .font(.click(.headline, weight: .bold))
+                .foregroundStyle(Theme.accent)
+            Text("You can't use Click yet. Come back when you're 18 — we'll be here.")
+                .font(.clickPlain(.subheadline, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                onSignOut()
+            } label: {
+                Text("sign out")
+                    .font(.click(.headline, weight: .heavy))
+                    .foregroundStyle(Theme.onPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Theme.primary, in: Capsule())
+            }
+            .buttonStyle(.click)
+            .accessibilityLabel("Sign out")
+
+            Button("I picked the wrong date") {
+                rejectionDismissed = true
+                showingRejection = false
+            }
+            .font(.clickPlain(.footnote, weight: .semibold))
+            .foregroundStyle(Theme.secondary)
+            .accessibilityLabel("I picked the wrong date, go back to the date picker")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
     }
 }
 
@@ -354,7 +471,7 @@ private struct GenderStep: View {
                 }
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+
     }
 }
 
@@ -374,7 +491,7 @@ private struct SeekingStep: View {
                 }
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+
     }
 
     /// "Everyone" subsumes the others, so keep the selection coherent.
@@ -415,7 +532,7 @@ private struct ChoiceRow: View {
             .padding(.vertical, 18)
             .background(
                 isSelected ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.surface),
-                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous)
             )
         }
         .buttonStyle(.plain)

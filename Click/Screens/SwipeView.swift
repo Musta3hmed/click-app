@@ -7,12 +7,22 @@
 //  next card scales up to meet it. The deck is filtered by the signed-in
 //  user's "who I want to meet" answer. Blocked profiles never enter it.
 //
+//  Layout note: no ScrollView here — the card's drag gesture would fight
+//  the scroll pan and make everything below the card unreachable. Instead
+//  the card flexes into whatever height remains after the action row and
+//  composer, capped to a 0.72 aspect, so an iPhone SE fits everything.
+//
+//  Deck state is keyed by profile ID, not index — blocking the top card
+//  removes it from the filtered query mid-session, and integer indexes
+//  silently aliased onto the wrong person.
+//
 
 import SwiftUI
 import SwiftData
 
 struct SwipeView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Query(
         filter: #Predicate<UserProfile> { !$0.isCurrentUser && !$0.isBlocked },
@@ -23,10 +33,13 @@ struct SwipeView: View {
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
 
-    @State private var topIndex = 0
+    /// IDs the user has swiped this session, in order.
+    @State private var swipedIDs: [UUID] = []
+    /// Rows created by the most recent like, so rewind can undo them.
+    @State private var lastLikeMatch: Match?
+    @State private var lastLikeConversation: Conversation?
     @State private var drag: CGSize = .zero
     @State private var flyingAway = false
-    @State private var lastSwipedIndex: Int?
     @State private var opener = ""
     @State private var toast: String?
     @State private var celebrating: UserProfile?
@@ -56,13 +69,13 @@ struct SwipeView: View {
                     actionRow
                     composer
                 }
-                .padding(.top, 20)
+                .padding(.top, 16)
                 .padding(.bottom, Theme.Metric.tabBarClearance)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
-        .ignoresSafeArea(edges: .top)
         .overlay(alignment: .bottom) { toastView }
         .overlay { celebrationOverlay }
         .sensoryFeedback(.success, trigger: celebrating != nil) { _, new in new }
@@ -82,8 +95,7 @@ struct SwipeView: View {
     }
 
     private var remaining: [UserProfile] {
-        guard topIndex < deck.count else { return [] }
-        return Array(deck[topIndex...])
+        deck.filter { !swipedIDs.contains($0.id) }
     }
 
     private var dragProgress: CGFloat {
@@ -93,31 +105,39 @@ struct SwipeView: View {
     // MARK: - Cards
 
     private var cardArea: some View {
-        ZStack {
-            if remaining.isEmpty {
-                DeckExhaustedState { reset() }
-            } else {
-                // Render back-to-front so the current card sits on top.
-                ForEach(Array(remaining.prefix(3).enumerated()).reversed(), id: \.element.id) { offset, profile in
-                    SwipeCard(profile: profile)
-                        .scaleEffect(cardScale(offset: offset))
-                        .offset(y: CGFloat(offset) * 12 * (offset == 1 ? (1 - dragProgress) : 1))
-                        .rotationEffect(offset == 0 ? .degrees(Double(drag.width / 14)) : .zero)
-                        .offset(offset == 0 ? drag : .zero)
-                        .opacity(offset == 0 && flyingAway ? 0 : 1)
-                        .overlay {
-                            if offset == 0 {
-                                decisionOverlay
+        GeometryReader { geo in
+            let cardWidth = min(geo.size.width, geo.size.height * 0.72)
+            let cardHeight = min(geo.size.height, cardWidth / 0.72)
+
+            ZStack {
+                if remaining.isEmpty {
+                    DeckExhaustedState { reset() }
+                } else {
+                    // Render back-to-front so the current card sits on top.
+                    ForEach(Array(remaining.prefix(3).enumerated()).reversed(), id: \.element.id) { offset, profile in
+                        SwipeCard(profile: profile)
+                            .frame(width: cardWidth, height: cardHeight)
+                            .scaleEffect(cardScale(offset: offset))
+                            .offset(y: CGFloat(offset) * 12 * (offset == 1 ? (1 - dragProgress) : 1))
+                            .rotationEffect(offset == 0 ? .degrees(Double(drag.width / 14)) : .zero)
+                            .offset(offset == 0 ? drag : .zero)
+                            .opacity(offset == 0 && flyingAway ? 0 : 1)
+                            .overlay {
+                                if offset == 0 {
+                                    decisionOverlay
+                                }
                             }
-                        }
-                        .gesture(offset == 0 ? dragGesture : nil)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: drag)
-                        .allowsHitTesting(offset == 0)
+                            .gesture(offset == 0 ? dragGesture : nil)
+                            .allowsHitTesting(offset == 0)
+                            // Back cards are visual context only — VoiceOver
+                            // must not read three profiles at once.
+                            .accessibilityHidden(offset != 0)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 440)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, Theme.Metric.gutter)
     }
 
@@ -144,8 +164,7 @@ struct SwipeView: View {
 
     private func stamp(text: String, color: Color, baseRotation: Double) -> some View {
         Text(text)
-            .font(.system(size: 38, weight: .black, design: .rounded))
-            .italic()
+            .font(.click(.largeTitle, weight: .black))
             .foregroundStyle(color)
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
@@ -161,6 +180,8 @@ struct SwipeView: View {
     private var dragGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                // Direct 1:1 finger tracking — an implicit .animation here
+                // once overrode the explicit fly-off (FINDINGS §42).
                 drag = value.translation
             }
             .onEnded { value in
@@ -183,8 +204,8 @@ struct SwipeView: View {
             circleButton("arrow.uturn.backward", tint: Theme.coin, label: "Rewind", size: 46, bounce: 0) {
                 rewind()
             }
-            .disabled(lastSwipedIndex == nil)
-            .opacity(lastSwipedIndex == nil ? 0.4 : 1)
+            .disabled(swipedIDs.isEmpty)
+            .opacity(swipedIDs.isEmpty ? 0.4 : 1)
 
             circleButton("xmark", tint: Theme.accent, label: "Pass", size: 58, bounce: passBounce) {
                 passBounce += 1
@@ -272,39 +293,56 @@ struct SwipeView: View {
         context.insert(Message(text: text, isFromMe: true, conversation: conversation))
 
         showToast("sent to \(profile.name.split(separator: " ").first.map(String.init) ?? profile.name)")
-        commit(liked: true)
+        commit(liked: true, conversation: conversation)
     }
 
     // MARK: - Swipe commit
 
-    private func commit(liked: Bool, isSuper: Bool = false) {
+    private func commit(liked: Bool, isSuper: Bool = false, conversation: Conversation? = nil) {
         guard let profile = remaining.first, !flyingAway else { return }
 
         Haptics.impact(liked ? .medium : .light)
 
-        // Arc-and-fade fly-off: out horizontally, up, extra rotation, fade.
-        flyingAway = true
-        withAnimation(.easeOut(duration: 0.32)) {
-            drag = CGSize(width: liked ? 640 : -640, height: -180)
+        // Arc-and-fade fly-off. flyingAway drives the fade, so it must be
+        // mutated INSIDE the animation or the card blinks out on frame one.
+        // Reduce Motion gets a pure cross-fade, not a faster slide.
+        withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.32)) {
+            if !reduceMotion {
+                drag = CGSize(width: liked ? 640 : -640, height: -180)
+            }
+            flyingAway = true
         }
 
+        var createdMatch: Match?
         if liked {
             let match = Match(profile: profile, isSuperChat: isSuper)
             context.insert(match)
+            createdMatch = match
             try? context.save()
         }
 
-        lastSwipedIndex = topIndex
+        lastLikeMatch = createdMatch
+        lastLikeConversation = conversation
         let mutual = liked && Self.likesYouBack(profile)
 
-        // Let the fly-off play before the next card becomes active.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-            topIndex += 1
-            drag = .zero
-            flyingAway = false
+        // Let the fly-off play, then swap cards with animations OFF so the
+        // incoming card does not inherit drag = 640 and spring in from
+        // off-screen (FINDINGS §42).
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.16 : 0.32)) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                swipedIDs.append(profile.id)
+                drag = .zero
+                flyingAway = false
+            }
             if mutual {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                if reduceMotion {
                     celebrating = profile
+                } else {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                        celebrating = profile
+                    }
                 }
             }
         }
@@ -312,24 +350,34 @@ struct SwipeView: View {
 
     /// Mock mutuality until a backend exists: stable per profile.
     private static func likesYouBack(_ profile: UserProfile) -> Bool {
-        let hash = abs(profile.name.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) })
-        return hash % 2 == 0
+        Theme.stableHash(profile.name) % 2 == 0
     }
 
+    /// Undo the last swipe — including the Match (and any opener
+    /// conversation) it created, so no phantom chat survives.
     private func rewind() {
-        guard let last = lastSwipedIndex else { return }
+        guard !swipedIDs.isEmpty else { return }
         Haptics.impact(.light)
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            topIndex = last
+            _ = swipedIDs.removeLast()
         }
-        lastSwipedIndex = nil
+        if let match = lastLikeMatch {
+            context.delete(match)
+        }
+        if let conversation = lastLikeConversation {
+            context.delete(conversation)  // Messages cascade.
+        }
+        lastLikeMatch = nil
+        lastLikeConversation = nil
+        try? context.save()
     }
 
     private func reset() {
         withAnimation {
-            topIndex = 0
-            lastSwipedIndex = nil
+            swipedIDs = []
         }
+        lastLikeMatch = nil
+        lastLikeConversation = nil
     }
 
     // MARK: - Toast & celebration
@@ -355,7 +403,11 @@ struct SwipeView: View {
                 .padding(.vertical, 12)
                 .background(Theme.primary, in: Capsule())
                 .padding(.bottom, Theme.Metric.tabBarClearance + 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(
+                    reduceMotion
+                        ? AnyTransition.opacity
+                        : AnyTransition.move(edge: .bottom).combined(with: .opacity)
+                )
                 .accessibilityLabel(toast)
         }
     }
@@ -371,7 +423,11 @@ struct SwipeView: View {
                     celebrating = nil
                 }
             }
-            .transition(.opacity.combined(with: .scale(scale: 1.08)))
+            .transition(
+                reduceMotion
+                    ? AnyTransition.opacity
+                    : AnyTransition.opacity.combined(with: .scale(scale: 1.08))
+            )
         }
     }
 }
@@ -383,7 +439,9 @@ private struct MatchCelebrationView: View {
     let myName: String
     let onDismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
+    @AccessibilityFocusState private var headingFocused: Bool
 
     var body: some View {
         ZStack {
@@ -391,7 +449,9 @@ private struct MatchCelebrationView: View {
                 .ignoresSafeArea()
                 .opacity(0.96)
 
-            ConfettiView()
+            if !reduceMotion {
+                ConfettiView()
+            }
 
             VStack(spacing: 24) {
                 Spacer()
@@ -399,17 +459,19 @@ private struct MatchCelebrationView: View {
                 HStack(spacing: -18) {
                     StickerAvatar(name: myName, size: 110)
                         .rotationEffect(.degrees(-8))
-                        .scaleEffect(appeared ? 1 : 0.2)
+                        .scaleEffect(entranceScale(from: 0.2))
                     StickerAvatar(name: profile.name, size: 110)
                         .rotationEffect(.degrees(8))
-                        .scaleEffect(appeared ? 1 : 0.2)
+                        .scaleEffect(entranceScale(from: 0.2))
                 }
 
                 Text("IT CLICKED!")
-                    .font(.system(size: 44, design: .rounded).weight(.black).italic())
+                    .font(.system(.largeTitle, design: .rounded).weight(.black).italic())
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-                    .scaleEffect(appeared ? 1 : 0.6)
+                    .scaleEffect(entranceScale(from: 0.6))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($headingFocused)
 
                 Text("\(profile.name.split(separator: " ").first.map(String.init) ?? profile.name) likes you too")
                     .font(.clickPlain(.headline, weight: .semibold))
@@ -432,14 +494,29 @@ private struct MatchCelebrationView: View {
                 .padding(.bottom, 40)
                 .accessibilityLabel("Keep swiping")
             }
+            .opacity(appeared ? 1 : 0)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.6).delay(0.1)) {
+            withAnimation(
+                reduceMotion
+                    ? .easeInOut(duration: 0.2)
+                    : .spring(response: 0.55, dampingFraction: 0.6).delay(0.1)
+            ) {
                 appeared = true
             }
+            headingFocused = true
         }
+        // A full-screen takeover: VoiceOver must not walk into the deck
+        // behind it.
+        .accessibilityAddTraits(.isModal)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("It's a match with \(profile.name)")
+    }
+
+    /// Reduce Motion: fade in place instead of zooming in.
+    private func entranceScale(from start: CGFloat) -> CGFloat {
+        if reduceMotion { return 1 }
+        return appeared ? 1 : start
     }
 }
 
@@ -449,10 +526,9 @@ private struct SwipeCard: View {
     let profile: UserProfile
 
     @State private var photoIndex = 0
-
-    private var photos: [UIImage] {
-        profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
-    }
+    /// Decoded once per card — decoding JPEGs inside a computed property ran
+    /// on every drag frame once real photos existed.
+    @State private var photos: [UIImage] = []
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -467,6 +543,14 @@ private struct SwipeCard: View {
 
             infoBlock
 
+            // Paging zones sit ABOVE the info text (tapping the name still
+            // pages, stories-style) but BELOW the controls that follow —
+            // and they cede the top band so the safety menu, online pill
+            // and progress bar always win (FINDINGS §4).
+            if photos.count > 1 {
+                pagingTapZones
+            }
+
             if photos.count > 1 {
                 photoProgress
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -480,29 +564,41 @@ private struct SwipeCard: View {
             }
 
             SafetyMenu(profile: profile)
-                .padding(10)
+                .padding(6)
                 .background(.ultraThinMaterial, in: Circle())
                 .padding(.top, photos.count > 1 ? 18 : 0)
-                .padding(14)
+                .padding(10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous))
         .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
-        // Tap left/right thirds to page photos, stories-style.
-        .overlay {
-            if photos.count > 1 {
-                HStack(spacing: 0) {
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onTapGesture { page(-1) }
-                    Rectangle().fill(.clear)
-                        .allowsHitTesting(false)
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onTapGesture { page(1) }
-                }
-            }
+        .task(id: profile.id) {
+            photos = profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
+            photoIndex = 0
+        }
+        // DemoPhotos can add photos while the card is on screen.
+        .onChange(of: profile.photos.count) { _, _ in
+            photos = profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
+            photoIndex = min(photoIndex, max(0, photos.count - 1))
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(profile.name), \(profile.displayAge). \(profile.bio)")
+    }
+
+    /// Left/right thirds page the photos; the top 88pt is left alone so the
+    /// safety menu, online pill and progress bar stay tappable.
+    private var pagingTapZones: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 88)
+            HStack(spacing: 0) {
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onTapGesture { page(-1) }
+                Rectangle().fill(.clear)
+                    .allowsHitTesting(false)
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onTapGesture { page(1) }
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -516,8 +612,9 @@ private struct SwipeCard: View {
                     .clipped()
             }
             .transition(.opacity)
+            .accessibilityHidden(true)
         } else {
-            // No photos yet (all seeded profiles): keep the gradient look.
+            // No photos yet: keep the gradient look.
             LinearGradient(
                 colors: gradientColors,
                 startPoint: .topLeading,
@@ -529,6 +626,7 @@ private struct SwipeCard: View {
                     .italic()
                     .foregroundStyle(.white.opacity(0.35))
             }
+            .accessibilityHidden(true)
         }
     }
 
@@ -553,8 +651,10 @@ private struct SwipeCard: View {
                 .lineLimit(2)
 
             HStack(spacing: 6) {
-                Text(profile.countryFlag)
-                Text(profile.zodiac.symbol)
+                CountryBadge(code: profile.countryCode, onDark: true)
+                Text(profile.zodiac.label)
+                    .font(.clickPlain(.caption, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
                 ForEach(profile.interests.prefix(3), id: \.self) { interest in
                     Text(interest)
                         .font(.clickPlain(.caption, weight: .semibold))
@@ -566,9 +666,18 @@ private struct SwipeCard: View {
             }
         }
         .padding(20)
+        // One merged element: without this, VoiceOver read every text twice
+        // (once via children, once via a container label).
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(profile.name), \(profile.displayAge). \(profile.bio). "
+            + "\(profile.isVerified ? "Verified. " : "")Interests: \(profile.interests.prefix(3).joined(separator: ", "))"
+        )
     }
 
-    /// Instagram-stories style segments across the top of the card.
+    /// Instagram-stories style segments across the top of the card. Also the
+    /// VoiceOver handle for paging: `.contain` on the card means adjustable
+    /// actions must live on a real element, so they live here.
     private var photoProgress: some View {
         HStack(spacing: 4) {
             ForEach(photos.indices, id: \.self) { index in
@@ -579,7 +688,16 @@ private struct SwipeCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Photos")
+        .accessibilityValue("Photo \(photoIndex + 1) of \(photos.count)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: page(1)
+            case .decrement: page(-1)
+            @unknown default: break
+            }
+        }
     }
 
     private var onlinePill: some View {
@@ -635,7 +753,7 @@ private struct DeckExhaustedState: View {
                 .padding(.top, 8)
         }
         .padding(Theme.Metric.gutter)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 

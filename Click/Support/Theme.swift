@@ -75,7 +75,8 @@ enum Theme {
     static let primary = Color(light: 0x000000, dark: 0xF2F2F2)
     static let onPrimary = Color(light: 0xFFFFFF, dark: 0x000000)
 
-    static let secondary = Color(light: 0x9E9E9E, dark: 0x8A8A90)
+    // Light value chosen for WCAG AA (4.54:1 on the off-white background).
+    static let secondary = Color(light: 0x6B6B6B, dark: 0x8A8A90)
     static let accent = Color(hex: 0xFF3B5C)
     static let online = Color(hex: 0x34C759)
     static let coin = Color(hex: 0xE8B21E)
@@ -105,10 +106,15 @@ enum Theme {
         [Color(hex: 0xF06595), Color(hex: 0xAD1457)]
     ]
 
+    /// Stable non-trapping hash (abs() of a wrapped Int can hit Int.min
+    /// and trap; unsigned arithmetic cannot).
+    static func stableHash(_ string: String) -> UInt64 {
+        string.unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }
+    }
+
     /// Stable pick from a gradient set for a given name.
     static func gradient(for name: String, in palette: [[Color]]) -> [Color] {
-        let hash = abs(name.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) })
-        return palette[hash % palette.count]
+        palette[Int(stableHash(name) % UInt64(palette.count))]
     }
 
     static let separator = Color(light: 0xE6E6E0, dark: 0x33333A)
@@ -118,6 +124,12 @@ enum Theme {
     enum Metric {
         static let card: CGFloat = 24
         static let sheet: CGFloat = 28
+        /// Buttons, rows, text fields and other standalone controls.
+        static let control: CGFloat = 20
+        /// Grid tiles (photos, bingo).
+        static let tile: CGFloat = 16
+        /// Small chips, toasts, stamps.
+        static let chip: CGFloat = 12
         static let gutter: CGFloat = 16
         static let sheetOverlap: CGFloat = 24
         /// Height reserved at the bottom of scroll views so the floating

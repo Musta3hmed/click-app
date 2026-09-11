@@ -17,6 +17,7 @@ enum AppSchema {
         Match.self,
         BoosterInventory.self,
         DailyReward.self,
-        Wallet.self
+        Wallet.self,
+        BingoBoard.self
     ]
 }

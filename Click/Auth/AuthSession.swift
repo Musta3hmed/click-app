@@ -9,6 +9,7 @@
 import Foundation
 import AuthenticationServices
 import Observation
+import SwiftData
 
 /// The durable record of who is signed in. Serialized into the Keychain.
 struct StoredSession: Codable, Equatable {
@@ -32,7 +33,9 @@ final class AuthSession {
     }
 
     private(set) var state: State = .restoring
-    private(set) var isSigningIn = false
+    /// The provider currently mid-flight, so only its button shows a spinner.
+    private(set) var signingInWith: AuthProviderKind?
+    var isSigningIn: Bool { signingInWith != nil }
     /// A user-visible failure from the last attempt. Cancellation never lands here.
     var lastErrorMessage: String?
 
@@ -48,6 +51,15 @@ final class AuthSession {
     /// Load the stored session and, for a real Apple credential, verify it
     /// has not been revoked since last launch.
     func restore() async {
+        // UI tests bypass the Keychain so they can start signed in.
+        if CommandLine.arguments.contains("--uitest-signed-in") {
+            state = .signedIn(StoredSession(
+                providerUserID: "uitest-user", provider: .mock, token: "uitest",
+                name: "Test", email: nil, createdAt: .now
+            ))
+            return
+        }
+
         guard let data = KeychainStore.load(account: Self.keychainAccount),
               let stored = try? JSONDecoder().decode(StoredSession.self, from: data) else {
             state = .signedOut
@@ -55,9 +67,28 @@ final class AuthSession {
         }
 
         if stored.provider == .apple && AuthConfig.useRealApple {
-            let credentialState = try? await ASAuthorizationAppleIDProvider()
-                .credentialState(forUserID: stored.providerUserID)
-            if credentialState == .revoked {
+            // Bounded: credentialState hits the network, and launch must not
+            // hang on weak signal. First result wins; on timeout (nil) trust
+            // the stored session.
+            let userID = stored.providerUserID
+            let credentialState = await withTaskGroup(
+                of: ASAuthorizationAppleIDProvider.CredentialState?.self
+            ) { group in
+                group.addTask {
+                    try? await ASAuthorizationAppleIDProvider().credentialState(forUserID: userID)
+                }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(3))
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+
+            // .notFound is as dead as .revoked — the Apple ID no longer maps
+            // to this app.
+            if credentialState == .revoked || credentialState == .notFound {
                 signOut()
                 lastErrorMessage = AuthError.revoked.errorDescription
                 return
@@ -71,9 +102,9 @@ final class AuthSession {
 
     func signIn(with kind: AuthProviderKind) async {
         guard !isSigningIn else { return }
-        isSigningIn = true
+        signingInWith = kind
         lastErrorMessage = nil
-        defer { isSigningIn = false }
+        defer { signingInWith = nil }
 
         do {
             let result = try await provider(for: kind).signIn()
@@ -103,6 +134,15 @@ final class AuthSession {
         }
     }
 
+    /// Sign out AND destroy the local account. Every caller must pass the
+    /// model context — leaving the previous user's profile behind was a
+    /// PII leak and an 18+ gate bypass on shared phones.
+    func signOut(erasing context: ModelContext) {
+        AccountEraser.eraseCurrentAccount(in: context)
+        signOut()
+    }
+
+    /// Keychain/session teardown only. Private-ish: prefer signOut(erasing:).
     func signOut() {
         KeychainStore.delete(account: Self.keychainAccount)
         state = .signedOut
