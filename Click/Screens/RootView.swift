@@ -14,6 +14,7 @@ import SwiftData
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthSession.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selection: AppTab = .swipe
 
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
@@ -41,8 +42,11 @@ struct RootView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.4), value: auth.state)
-        .animation(.easeInOut(duration: 0.4), value: onboardingCompleted)
+        .animation(Theme.Motion.screenFade, value: auth.state)
+        .animation(Theme.Motion.screenFade, value: onboardingCompleted)
+        // The single place Reduce Motion is read; everything below resolves
+        // tiers through @Environment(\.motion).
+        .environment(\.motion, ClickMotion(reduceMotion: reduceMotion))
     }
 
     /// Shown while the Keychain (and, with real Apple auth, a bounded

@@ -45,25 +45,23 @@ enum Theme {
     static let brandViolet = Color(hex: 0x8A2BE2)
 
     /// Full three-stop brand wash, for hero surfaces (welcome, match overlay).
-    static var brandGradient: LinearGradient {
-        LinearGradient(
-            colors: [brandOrange, brandCoral, brandPink],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
+    /// Stored, not computed — these sit inside TimelineViews and must not
+    /// allocate per frame.
+    static let brandGradient = LinearGradient(
+        colors: [brandOrange, brandCoral, brandPink],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 
     // Header gradient. Same hue in both modes — it sits behind white text.
     static let headerTop = Color(hex: 0xFF9A4C)
     static let headerBottom = Color(hex: 0xFF4D67)
 
-    static var headerGradient: LinearGradient {
-        LinearGradient(
-            colors: [headerTop, headerBottom],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
+    static let headerGradient = LinearGradient(
+        colors: [headerTop, headerBottom],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 
     /// Warm off-white, deliberately not pure white.
     static let background = Color(light: 0xF4F4EF, dark: 0x111114)
@@ -118,6 +116,31 @@ enum Theme {
     }
 
     static let separator = Color(light: 0xE6E6E0, dark: 0x33333A)
+
+    // MARK: Motion
+    // The five-tier Click motion system. No animation curve may be declared
+    // anywhere else (CI lints for it); call sites resolve tiers through
+    // `@Environment(\.motion)` so Reduce Motion is handled in one place.
+
+    enum Motion {
+        // Tier 1 — touch feedback (asymmetric: fast in, soft bounce out)
+        static let pressIn  = Animation.spring(response: 0.16, dampingFraction: 0.92)
+        static let pressOut = Animation.spring(response: 0.30, dampingFraction: 0.62)
+        // Tier 2 — state inside a screen (selection, toggle, reveal, folder switch)
+        static let state = Animation.spring(response: 0.32, dampingFraction: 0.82)
+        // Tier 3 — the screen/step itself changed
+        static let screen = Animation.spring(response: 0.42, dampingFraction: 0.90)
+        static let screenFade = Animation.easeInOut(duration: 0.26)   // pure cross-fades
+        // Tier 4 — physical objects under the finger
+        static let gesture = Animation.interpolatingSpring(stiffness: 210, damping: 26)
+        static let flyOff  = Animation.spring(response: 0.40, dampingFraction: 1.0)
+        // Tier 5 — celebration (the ONLY loud bounce allowed)
+        static let celebrate    = Animation.spring(response: 0.50, dampingFraction: 0.62)
+        static let celebrateOut = Animation.easeOut(duration: 0.22)
+        static let numeric = Animation.snappy(duration: 0.28, extraBounce: 0.12)
+        static let stagger: Double = 0.055
+        static let celebrationDuration: Double = 2.4
+    }
 
     // MARK: Metrics
 
