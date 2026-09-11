@@ -1,10 +1,15 @@
-//___FILEHEADER___
+//
+//  Project_FOMO___Social_MediaApp.swift
+//  Project FOMO - Social Media
+//
+//  Created by Mustafa on 11/9/2026.
+//
 
 import SwiftUI
 import SwiftData
 
 @main
-struct ___PACKAGENAME:identifier___App: App {
+struct Project_FOMO___Social_MediaApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,

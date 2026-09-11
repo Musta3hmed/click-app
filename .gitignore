@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Xcode — per-user state (window layout, breakpoints, scheme selection).
+# Never commit this: it conflicts constantly between collaborators.
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Shared schemes SHOULD be committed so everyone builds the same way.
+!xcshareddata/
+!xcshareddata/xcschemes/
+
+# Build products
+build/
+DerivedData/
+*.o
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+Package.resolved.bak
+
+# CocoaPods / Carthage (only if you add them later)
+Pods/
+Carthage/Build/
+
+# Fastlane
+fastlane/report.xml
+fastlane/screenshots/**/*.png
+
+# Claude Code — local, per-user settings
+.claude/settings.local.json
