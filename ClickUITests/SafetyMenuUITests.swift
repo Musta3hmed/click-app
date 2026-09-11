@@ -32,6 +32,16 @@ final class SafetyMenuUITests: XCTestCase {
             "Swipe deck should show a card with its safety menu"
         )
 
+        // Guard against a vacuous pass: the top card must genuinely be a
+        // multi-photo card, or the paging overlay under test never exists.
+        let photoIndicator = app.otherElements.matching(
+            NSPredicate(format: "label == 'Photos' AND value BEGINSWITH 'Photo 1 of'")
+        ).firstMatch
+        XCTAssertTrue(
+            photoIndicator.waitForExistence(timeout: 5),
+            "UI-test seeding should give the top card multiple photos; without them this test proves nothing"
+        )
+
         menuButton.tap()
 
         XCTAssertTrue(

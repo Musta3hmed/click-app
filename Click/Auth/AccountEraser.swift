@@ -46,6 +46,16 @@ enum AccountEraser {
             inventory.count = 0
         }
 
+        // Block/mute/report state lives ON the candidate rows — it is the
+        // previous user's behavioural data and must not be inherited by the
+        // next account (who would see a blocklist they never made).
+        for candidate in (try? context.fetch(FetchDescriptor<UserProfile>())) ?? [] {
+            candidate.isBlocked = false
+            candidate.isMuted = false
+            candidate.reportedReasonRaw = nil
+            candidate.reportedAt = nil
+        }
+
         try? context.save()
 
         let defaults = UserDefaults.standard

@@ -17,29 +17,64 @@ enum MockData {
 
     // MARK: - Seeding
 
-    /// Populates an empty store with candidate profiles. Safe to call on
-    /// every launch. The CURRENT user's row is created by onboarding, not
-    /// here — so the guard counts only non-current profiles.
+    /// Populates the store with demo content. Safe to call on every launch.
+    /// Each content family has its OWN emptiness guard: AccountEraser
+    /// deletes conversations on sign-out but keeps candidate profiles, and
+    /// with a single guard the demo chats would never come back for the
+    /// next account. The CURRENT user's row is created by onboarding, never
+    /// here.
     static func seedIfNeeded(_ context: ModelContext) {
-        let descriptor = FetchDescriptor<UserProfile>(
-            predicate: #Predicate { !$0.isCurrentUser }
-        )
-        let existing = (try? context.fetchCount(descriptor)) ?? 0
-        guard existing == 0 else { return }
-
-        let profiles = candidateProfiles()
-        for profile in profiles {
-            context.insert(profile)
+        // UI tests need a deterministic store: wipe demo content first so a
+        // reused simulator container cannot leave the test running against
+        // stale (photo-less) data.
+        if CommandLine.arguments.contains("--uitest-photos") {
+            wipeAll(context)
         }
 
-        seedConversations(context, profiles: profiles)
-        seedBoosters(context)
-        seedDailyRewards(context)
+        // Sorted by createdAt (seeded with staggered timestamps) so the
+        // index-based conversation scripts always attach to the intended
+        // profile, and the deck order is stable.
+        let candidatesDescriptor = FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+
+        if (try? context.fetchCount(candidatesDescriptor)) == 0 {
+            for profile in candidateProfiles() {
+                context.insert(profile)
+            }
+        }
+
+        let profiles = (try? context.fetch(candidatesDescriptor)) ?? []
+
+        if (try? context.fetchCount(FetchDescriptor<Conversation>())) == 0 {
+            seedConversations(context, profiles: profiles)
+        }
+        if (try? context.fetchCount(FetchDescriptor<BoosterInventory>())) == 0 {
+            seedBoosters(context)
+        }
+        if (try? context.fetchCount(FetchDescriptor<DailyReward>())) == 0 {
+            seedDailyRewards(context)
+        }
 
         if CommandLine.arguments.contains("--uitest-photos") {
             seedUITestPhotos(context, profiles: profiles)
         }
 
+        try? context.save()
+    }
+
+    /// Full demo-content wipe, used only under the UI-test flag.
+    private static func wipeAll(_ context: ModelContext) {
+        for profile in (try? context.fetch(FetchDescriptor<UserProfile>())) ?? [] {
+            context.delete(profile)
+        }
+        for conversation in (try? context.fetch(FetchDescriptor<Conversation>())) ?? [] {
+            context.delete(conversation)
+        }
+        for match in (try? context.fetch(FetchDescriptor<Match>())) ?? [] {
+            context.delete(match)
+        }
         try? context.save()
     }
 
@@ -71,6 +106,7 @@ enum MockData {
             ("Nina Petrova", 20, "ballet then burgers", "RU", .scorpio, ["dance", "food", "art"], false, .woman)
         ]
 
+        let base = Date.now
         return seeds.enumerated().map { index, seed in
             UserProfile(
                 name: seed.0,
@@ -81,7 +117,8 @@ enum MockData {
                 interests: seed.5,
                 isVerified: seed.6,
                 isOnline: index % 3 == 0,
-                gender: seed.7
+                gender: seed.7,
+                createdAt: base.addingTimeInterval(Double(index) * 0.01)
             )
         }
     }

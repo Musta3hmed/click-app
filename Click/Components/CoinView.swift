@@ -39,6 +39,10 @@ struct CoinView: View {
         .rotation3DEffect(.degrees(spin ? 360 : 0), axis: (x: 0, y: 1, z: 0))
         .scaleEffect(spin ? 1.25 : 1)
         .onChange(of: earnTrigger) { _, _ in
+            // The 3D spin is the most vestibular-triggering motion in the
+            // app — skip it entirely under Reduce Motion (the rolling coin
+            // count still communicates the earn).
+            guard !reduceMotion else { return }
             withAnimation(.spring(response: 0.55, dampingFraction: 0.55)) {
                 spin = true
             } completion: {

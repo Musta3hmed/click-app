@@ -103,9 +103,19 @@ struct ClickModelTests {
         context.insert(ProfilePhoto(data: Data([0x01]), sortIndex: 0, owner: me))
         context.insert(Match(profile: me))
         context.insert(Wallet(coins: 50))
+
+        // Behavioural data on candidate rows must not survive either.
+        let candidateDescriptor = FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser }
+        )
+        let someCandidate = try #require(try context.fetch(candidateDescriptor).first)
+        SafetyCenter.block(someCandidate, in: context)
         try context.save()
 
         AccountEraser.eraseCurrentAccount(in: context)
+
+        #expect(!someCandidate.isBlocked, "The next account must not inherit the previous user's blocklist")
+        #expect(!someCandidate.isMuted)
 
         let currentUsers = FetchDescriptor<UserProfile>(predicate: #Predicate { $0.isCurrentUser })
         #expect(try context.fetchCount(currentUsers) == 0)

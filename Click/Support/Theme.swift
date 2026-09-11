@@ -106,10 +106,15 @@ enum Theme {
         [Color(hex: 0xF06595), Color(hex: 0xAD1457)]
     ]
 
+    /// Stable non-trapping hash (abs() of a wrapped Int can hit Int.min
+    /// and trap; unsigned arithmetic cannot).
+    static func stableHash(_ string: String) -> UInt64 {
+        string.unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }
+    }
+
     /// Stable pick from a gradient set for a given name.
     static func gradient(for name: String, in palette: [[Color]]) -> [Color] {
-        let hash = abs(name.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) })
-        return palette[hash % palette.count]
+        palette[Int(stableHash(name) % UInt64(palette.count))]
     }
 
     static let separator = Color(light: 0xE6E6E0, dark: 0x33333A)

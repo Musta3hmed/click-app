@@ -37,7 +37,8 @@ struct WelcomeView: View {
                 // radius fighting a clipShape, and no asset to maintain.
                 ClickLogoView(size: 110)
                     .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
-                    .scaleEffect(appeared ? 1 : 0.7)
+                    // Fade, don't zoom, under Reduce Motion.
+                    .scaleEffect(reduceMotion ? 1 : (appeared ? 1 : 0.7))
                     .padding(.bottom, 28)
 
                 Text("MAKE IT\nCLICK")

@@ -20,7 +20,7 @@ jobs:
       - name: Ban emoji in Swift sources
         run: |
           set -e
-          MATCHES=$(perl -CSD -ne 'print "$ARGV:$.: $_" if /[\x{1F000}-\x{1FAFF}\x{1F1E6}-\x{1F1FF}\x{2600}-\x{27BF}\x{FE0F}\x{2B50}\x{2B55}]/' $(find Click ClickTests ClickUITests -name '*.swift') || true)
+          MATCHES=$(perl -CSD -ne 'print "$ARGV:$.: $_" if /[\x{1F000}-\x{1FAFF}\x{1F1E6}-\x{1F1FF}\x{2600}-\x{27BF}\x{FE0E}\x{FE0F}\x{2B00}-\x{2BFF}\x{231A}-\x{231B}\x{2328}\x{23E9}-\x{23FA}\x{203C}\x{2049}\x{20E3}\x{24C2}\x{3030}\x{303D}\x{3297}\x{3299}]/; close ARGV if eof' $(find Click ClickTests ClickUITests -name '*.swift') || true)
           if [ -n "$MATCHES" ]; then
             echo "Emoji found in Swift sources (they render as boxes on some targets):"
             echo "$MATCHES"

@@ -42,7 +42,10 @@ struct ChatsView: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.background)
-
+            // This tab lives in a NavigationStack with no title: hide the
+            // bar so its inset doesn't push the header band lower than on
+            // the other two tabs. ConversationView gets its bar back.
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Conversation.self) { conversation in
                 ConversationView(conversation: conversation)
                     .navigationTransition(.zoom(sourceID: conversation.id, in: zoom))

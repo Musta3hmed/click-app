@@ -13,6 +13,7 @@ struct SettingsView: View {
 
     @State private var confirmingDelete = false
     @State private var deleteConfirmationText = ""
+    @State private var deleteMismatch = false
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -210,13 +211,27 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.characters)
                 Button("Delete forever", role: .destructive) {
                     guard deleteConfirmationText.trimmingCharacters(in: .whitespaces)
-                        .uppercased() == "DELETE" else { return }
+                        .uppercased() == "DELETE" else {
+                        // An alert button always dismisses — a wrong entry
+                        // must say so, never silently do nothing.
+                        deleteMismatch = true
+                        return
+                    }
                     dismiss()
                     auth.signOut(erasing: context)
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This permanently deletes your profile, photos, matches and messages from this device. There is no undo. Type DELETE to confirm.")
+            }
+            .alert("Nothing was deleted", isPresented: $deleteMismatch) {
+                Button("Try again") {
+                    deleteConfirmationText = ""
+                    confirmingDelete = true
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The confirmation didn't match. Type DELETE exactly to delete your account.")
             }
         }
         .listRowBackground(Color.clear)

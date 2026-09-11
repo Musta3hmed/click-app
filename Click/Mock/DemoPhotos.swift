@@ -20,16 +20,26 @@ enum DemoPhotos {
     /// Fetch 2–4 gender-matched faces for every candidate profile that has
     /// none. Progressive: each profile's photos save as they arrive, so
     /// cards fill in while the app is used. Safe to call on every launch.
+    private static let lastFailureKey = "demoPhotosLastFailure"
+
     @MainActor
     static func seedIfNeeded(_ context: ModelContext) async {
         // UI tests seed their own deterministic photos.
         guard !CommandLine.arguments.contains(where: { $0.hasPrefix("--uitest") }) else { return }
+
+        // Backoff: if the source was unreachable recently, don't burn a
+        // long serial retry (dozens of 10–15s timeouts) on every launch.
+        if let lastFailure = UserDefaults.standard.object(forKey: lastFailureKey) as? Date,
+           Date.now.timeIntervalSince(lastFailure) < 6 * 60 * 60 {
+            return
+        }
 
         let descriptor = FetchDescriptor<UserProfile>(
             predicate: #Predicate { !$0.isCurrentUser && !$0.isBlocked }
         )
         guard let profiles = try? context.fetch(descriptor) else { return }
 
+        var anySucceeded = false
         for profile in profiles where profile.photos.isEmpty {
             let count = photoCount(for: profile.name)
             var added = 0
@@ -40,15 +50,24 @@ enum DemoPhotos {
                 added += 1
             }
             if added > 0 {
+                anySucceeded = true
                 try? context.save()
+            } else if !anySucceeded {
+                // First profile got nothing: the source is down or we are
+                // offline. Abort the whole pass and back off.
+                UserDefaults.standard.set(Date.now, forKey: lastFailureKey)
+                return
             }
+        }
+
+        if anySucceeded {
+            UserDefaults.standard.removeObject(forKey: lastFailureKey)
         }
     }
 
     /// 2–4, stable per name so relaunches don't change a profile's layout.
     private static func photoCount(for name: String) -> Int {
-        let hash = abs(name.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) })
-        return 2 + hash % 3
+        2 + Int(Theme.stableHash(name) % 3)
     }
 
     /// Two-step API: JSON with a generated image path, then the image bytes.

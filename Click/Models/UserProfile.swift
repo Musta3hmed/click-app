@@ -33,7 +33,8 @@ final class UserProfile {
     var birthDate: Date?
     var genderRaw: String?
     /// The signed-in user's "who I want to meet" answer(s).
-    var seekingRaw: [String]
+    /// Declared default so lightweight migration from older stores succeeds.
+    var seekingRaw: [String] = []
 
     // Coarse location only — city-level, never precise coordinates.
     var city: String?

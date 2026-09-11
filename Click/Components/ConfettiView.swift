@@ -41,8 +41,12 @@ struct ConfettiView: View {
         }
     }()
 
+    /// Flips once the burst finishes so the display link stops instead of
+    /// invoking an empty Canvas every frame for as long as the overlay lives.
+    @State private var finished = false
+
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: finished)) { timeline in
             Canvas { context, size in
                 let elapsed = timeline.date.timeIntervalSince(startDate)
                 guard elapsed < duration else { return }
@@ -81,6 +85,10 @@ struct ConfettiView: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .task {
+            try? await Task.sleep(for: .seconds(duration + 0.1))
+            finished = true
+        }
     }
 }
 

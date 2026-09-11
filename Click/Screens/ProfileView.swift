@@ -34,9 +34,12 @@ struct ProfileView: View {
     private var wallet: Wallet? { wallets.first }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                header
+        // Header OUTSIDE the scroll view: its safe-area-bleeding background
+        // cannot escape a ScrollView's clipped, inset geometry, which left a
+        // background strip behind the status bar on this tab only.
+        VStack(spacing: 0) {
+            header
+            ScrollView {
                 OverlappingSheet {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
@@ -48,11 +51,12 @@ struct ProfileView: View {
                     .padding(.top, 20)
                     .padding(.bottom, 8)
                 }
+                .tabBarClearance()
             }
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
-        .tabBarClearance()
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
@@ -169,7 +173,7 @@ struct ProfileView: View {
 
     /// A real purchase, not a silent no-op: insufficient balance says so.
     private func buyBooster(_ inventory: BoosterInventory) {
-        let wallet = ensureWallet()
+        let wallet = Wallet.ensure(in: context)
         guard wallet.coins >= Self.boosterPrice else {
             insufficientCoinsMessage = "A \(inventory.kind.label) costs \(Self.boosterPrice) coins — you have \(wallet.coins). Earn more with daily rewards and bingo."
             Haptics.notify(.error)
@@ -230,12 +234,12 @@ struct ProfileView: View {
     private func claim(_ reward: DailyReward) {
         guard !reward.isClaimed, !claimedToday else { return }
 
-        // Credit BEFORE consuming, and never against a nil wallet.
-        let wallet = ensureWallet()
+        // Credit BEFORE consuming, and never against a nil wallet or a
+        // missing inventory row.
+        let wallet = Wallet.ensure(in: context)
         wallet.coins += reward.coinValue
-        if let kind = reward.boosterKind,
-           let inventory = boosters.first(where: { $0.kindRaw == kind.rawValue }) {
-            inventory.count += 1
+        if let kind = reward.boosterKind {
+            BoosterInventory.ensure(kind, in: context).count += 1
         }
 
         // Streak: consecutive calendar days; a gap resets to 1.
@@ -267,14 +271,6 @@ struct ProfileView: View {
         try? context.save()
     }
 
-    private func ensureWallet() -> Wallet {
-        if let wallet { return wallet }
-        let fresh = Wallet()
-        context.insert(fresh)
-        try? context.save()
-        return fresh
-    }
-
     // MARK: - Referral
 
     private var referralSection: some View {
@@ -296,7 +292,7 @@ struct ProfileView: View {
                     isEnabled: !referralCode.trimmingCharacters(in: .whitespaces).isEmpty,
                     horizontalPadding: 20
                 ) {
-                    ensureWallet().referralCodeUsed = referralCode
+                    Wallet.ensure(in: context).referralCodeUsed = referralCode
                     referralCode = ""
                     try? context.save()
                 }

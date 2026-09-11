@@ -21,7 +21,6 @@ struct BingoView: View {
 
     @Query private var boards: [BingoBoard]
     @Query private var wallets: [Wallet]
-    @Query private var inventories: [BoosterInventory]
 
     @State private var showingOdds = false
     @State private var insufficientMessage: String?
@@ -68,7 +67,9 @@ struct BingoView: View {
         }
         .padding(16)
         .cardSurface(radius: Theme.Metric.card)
-        .task { ensureBoard() }
+        // Keyed on the date so the board rolls over at midnight while the
+        // app stays open, instead of vanishing until the next relaunch.
+        .task(id: todayKey) { ensureBoard() }
         .sheet(isPresented: $showingOdds) { oddsSheet }
         .alert(
             "Not enough coins",
@@ -216,7 +217,15 @@ struct BingoView: View {
     }
 
     private func ensureBoard() {
-        guard board == nil else { return }
+        // Yesterday's boards are dead weight — prune them so the table
+        // doesn't grow forever.
+        for stale in boards where stale.dateKey != todayKey {
+            context.delete(stale)
+        }
+        guard board == nil else {
+            try? context.save()
+            return
+        }
         let fresh = BingoBoard(dateKey: todayKey, tileRewards: Self.generateRewards(dateKey: todayKey))
         context.insert(fresh)
         try? context.save()
@@ -239,7 +248,7 @@ struct BingoView: View {
     private func claim(_ board: BingoBoard) {
         guard !board.isClaimed, board.pickedIndexes.count == Self.picksAllowed else { return }
 
-        let wallet = ensureWallet()
+        let wallet = Wallet.ensure(in: context)
         guard wallet.coins >= Self.claimPrice else {
             insufficientMessage = "Claiming costs \(Self.claimPrice) coins and you have \(wallet.coins)."
             Haptics.notify(.error)
@@ -252,7 +261,9 @@ struct BingoView: View {
             case .coins(let value):
                 wallet.coins += value
             case .booster(let kind):
-                inventories.first { $0.kindRaw == kind.rawValue }?.count += 1
+                // ensure(_:in:) — a missing inventory row must never eat a
+                // reward the user just paid for.
+                BoosterInventory.ensure(kind, in: context).count += 1
             case nil:
                 break
             }
@@ -261,14 +272,6 @@ struct BingoView: View {
         try? context.save()
         coinEarnTrigger += 1
         Haptics.notify(.success)
-    }
-
-    private func ensureWallet() -> Wallet {
-        if let wallet { return wallet }
-        let fresh = Wallet()
-        context.insert(fresh)
-        try? context.save()
-        return fresh
     }
 }
 

@@ -20,6 +20,9 @@ struct RootView: View {
 
     @Query private var conversations: [Conversation]
 
+    @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
+    private var currentUsers: [UserProfile]
+
     var body: some View {
         Group {
             switch auth.state {
@@ -54,6 +57,9 @@ struct RootView: View {
                     .tint(.white)
             }
         }
+        // .ignore so the label is actually announced — on a plain ZStack it
+        // was dropped and VoiceOver read the unlabeled children instead.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Click is starting")
     }
 
@@ -99,10 +105,7 @@ struct RootView: View {
     }
 
     private var currentUserName: String {
-        let descriptor = FetchDescriptor<UserProfile>(
-            predicate: #Predicate { $0.isCurrentUser }
-        )
-        return (try? context.fetch(descriptor))?.first?.name ?? ""
+        currentUsers.first { !$0.isDeleted }?.name ?? ""
     }
 
     private var badges: [AppTab: Int] {

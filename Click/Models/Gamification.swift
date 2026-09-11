@@ -49,13 +49,16 @@ final class DailyReward {
 }
 
 /// Single-row wallet for the signed-in user.
+/// New stored properties carry declared defaults so SwiftData lightweight
+/// migration can open a store written by an older build instead of
+/// throwing (which ClickApp turns into a launch crash).
 @Model
 final class Wallet {
     @Attribute(.unique) var id: String
-    var coins: Int
+    var coins: Int = 0
     var referralCodeUsed: String?
     /// Consecutive-day claim streak. A skipped day resets it.
-    var currentStreak: Int
+    var currentStreak: Int = 0
     var lastClaimAt: Date?
 
     init(id: String = "primary", coins: Int = 0) {
@@ -64,6 +67,38 @@ final class Wallet {
         self.referralCodeUsed = nil
         self.currentStreak = 0
         self.lastClaimAt = nil
+    }
+
+    /// The single fetch-or-create path. Always goes through a fresh fetch —
+    /// two views each lazily inserting from their own (possibly stale)
+    /// @Query produced duplicate unique-key upserts that zeroed the balance.
+    @MainActor
+    static func ensure(in context: ModelContext) -> Wallet {
+        if let existing = try? context.fetch(FetchDescriptor<Wallet>()).first {
+            return existing
+        }
+        let fresh = Wallet()
+        context.insert(fresh)
+        try? context.save()
+        return fresh
+    }
+}
+
+extension BoosterInventory {
+    /// Fetch-or-create for a booster kind, so granting a reward can never
+    /// silently vanish because a row was missing from an old store.
+    @MainActor
+    static func ensure(_ kind: BoosterKind, in context: ModelContext) -> BoosterInventory {
+        let raw = kind.rawValue
+        let descriptor = FetchDescriptor<BoosterInventory>(
+            predicate: #Predicate { $0.kindRaw == raw }
+        )
+        if let existing = try? context.fetch(descriptor).first {
+            return existing
+        }
+        let fresh = BoosterInventory(kind: kind)
+        context.insert(fresh)
+        return fresh
     }
 }
 

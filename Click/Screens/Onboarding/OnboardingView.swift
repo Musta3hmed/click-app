@@ -65,7 +65,7 @@ struct OnboardingView: View {
         OnboardingStep(rawValue: storedStep.clamped(to: 0...(OnboardingStep.allCases.count - 1))) ?? .name
     }
 
-    private var profile: UserProfile? { currentUsers.first }
+    private var profile: UserProfile? { currentUsers.first { !$0.isDeleted } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -166,11 +166,14 @@ struct OnboardingView: View {
         case .seeking:
             SeekingStep(selection: $seeking)
         case .photos:
-            if let profile {
+            // isDeleted guard: sign-out erases the row while this view may
+            // still be on screen for a transition frame — touching a deleted
+            // model's properties traps.
+            if let profile, !profile.isDeleted {
                 PhotosStep(profile: profile)
             }
         case .location:
-            if let profile {
+            if let profile, !profile.isDeleted {
                 LocationStep(profile: profile)
             }
         }
@@ -221,11 +224,13 @@ struct OnboardingView: View {
 
         let currentProviderID = auth.current?.providerUserID
 
-        // A leftover row from a DIFFERENT credential is someone else's
-        // identity — never resume it. Erase and start clean. (Sign-out also
-        // erases; this is the belt to that braces.)
+        // A leftover row that is not verifiably THIS credential's is someone
+        // else's identity — never resume it. That includes rows with a nil
+        // owner (written by older builds): treating nil as "mine" both
+        // leaked the previous user's profile and inserted a duplicate
+        // isCurrentUser row. Erase and start clean. (Sign-out also erases;
+        // this is the belt to those braces.)
         if let existing = profile,
-           existing.ownerProviderID != nil,
            existing.ownerProviderID != currentProviderID {
             AccountEraser.eraseCurrentAccount(in: context)
         }
@@ -352,9 +357,13 @@ private struct BirthDateStep: View {
     let onSignOut: () -> Void
 
     /// Once an under-18 date is confirmed this becomes a terminal screen,
-    /// not a live picker to fiddle with. "Fix my birth date" covers honest
-    /// mis-scrolls; sign out is the real exit.
+    /// not a live picker to fiddle with. "I picked the wrong date" reveals
+    /// the picker again for honest mis-scrolls and stays revealed (an
+    /// auto-re-trigger here once locked users into an unescapable loop);
+    /// sign out is the real exit. Continue remains hard-disabled under 18
+    /// either way — this state is presentation, not the gate.
     @State private var showingRejection = false
+    @State private var rejectionDismissed = false
 
     private var age: Int { UserProfile.age(from: birthDate) }
 
@@ -367,7 +376,13 @@ private struct BirthDateStep: View {
                     "Date of birth",
                     selection: Binding(
                         get: { birthDate },
-                        set: { birthDate = $0; touched = true }
+                        set: {
+                            birthDate = $0
+                            touched = true
+                            if UserProfile.age(from: $0) < 18 && !rejectionDismissed {
+                                showingRejection = true
+                            }
+                        }
                     ),
                     in: ...Date.now,
                     displayedComponents: .date
@@ -386,15 +401,20 @@ private struct BirthDateStep: View {
                         .font(.click(.headline, weight: .bold))
                         .foregroundStyle(Theme.online)
                 } else {
-                    Color.clear
-                        .frame(height: 1)
-                        .onAppear { showingRejection = true }
+                    Label("Click is for 18 and over — you can't continue with this date", systemImage: "hand.raised.fill")
+                        .font(.clickPlain(.footnote, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .multilineTextAlignment(.center)
                 }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showingRejection)
-        .onChange(of: touched) { _, isTouched in
-            if isTouched && age < 18 { showingRejection = true }
+        .onAppear {
+            // Resuming the step with a stored under-18 date lands on the
+            // terminal card, not a live picker.
+            if touched && age < 18 && !rejectionDismissed {
+                showingRejection = true
+            }
         }
     }
 
@@ -422,6 +442,7 @@ private struct BirthDateStep: View {
             .accessibilityLabel("Sign out")
 
             Button("I picked the wrong date") {
+                rejectionDismissed = true
                 showingRejection = false
             }
             .font(.clickPlain(.footnote, weight: .semibold))

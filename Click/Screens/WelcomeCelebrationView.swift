@@ -30,7 +30,8 @@ struct WelcomeCelebrationView: View {
                 Spacer()
 
                 ClickLogoView(size: 110)
-                    .scaleEffect(appeared ? 1 : 0.5)
+                    // Fade, don't zoom, under Reduce Motion.
+                    .scaleEffect(reduceMotion ? 1 : (appeared ? 1 : 0.5))
 
                 Text(headline)
                     .font(.system(.largeTitle, design: .rounded).weight(.black).italic())

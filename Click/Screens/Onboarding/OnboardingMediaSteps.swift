@@ -113,6 +113,8 @@ struct PhotosStep: View {
         isImporting = true
         importFailed = false
         Task {
+            // Sign-out can delete the row while an import is in flight.
+            guard !profile.isDeleted else { return }
             var nextIndex = (profile.orderedPhotos.last?.sortIndex ?? -1) + 1
             var anyFailed = false
 
@@ -380,6 +382,8 @@ struct LocationStep: View {
     // MARK: Persistence
 
     private func save(_ place: CoarsePlace) {
+        // Sign-out can delete the row while a geocode is in flight.
+        guard !profile.isDeleted else { return }
         profile.city = place.city
         profile.country = place.country
         profile.countryCode = place.countryCode
