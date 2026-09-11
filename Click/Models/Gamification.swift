@@ -64,6 +64,8 @@ final class Wallet {
     var profileViews: Int = 0
     /// Bulk message rate limit: at most one send per 24h.
     var lastBulkSendAt: Date? = nil
+    /// One free super like per day; after that it costs a booster.
+    var lastFreeSuperLikeAt: Date? = nil
 
     init(id: String = "primary", coins: Int = 0) {
         self.id = id
@@ -73,6 +75,10 @@ final class Wallet {
         self.lastClaimAt = nil
     }
 
+    /// Day-1 economy unlock: without this the balance starts at 0, both
+    /// sinks cost 25 and day-1 income is 5 — nothing is affordable.
+    static let welcomeBonus = 50
+
     /// The single fetch-or-create path. Always goes through a fresh fetch —
     /// two views each lazily inserting from their own (possibly stale)
     /// @Query produced duplicate unique-key upserts that zeroed the balance.
@@ -81,7 +87,7 @@ final class Wallet {
         if let existing = try? context.fetch(FetchDescriptor<Wallet>()).first {
             return existing
         }
-        let fresh = Wallet()
+        let fresh = Wallet(coins: welcomeBonus)
         context.insert(fresh)
         try? context.save()
         return fresh

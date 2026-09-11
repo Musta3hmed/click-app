@@ -140,6 +140,7 @@ struct WelcomeView: View {
 enum LegalDocument: String, Identifiable {
     case terms
     case privacy
+    case guidelines
 
     var id: String { rawValue }
 
@@ -147,6 +148,7 @@ enum LegalDocument: String, Identifiable {
         switch self {
         case .terms: "Terms of Service"
         case .privacy: "Privacy Policy"
+        case .guidelines: "Community Guidelines"
         }
     }
 
@@ -172,11 +174,20 @@ enum LegalDocument: String, Identifiable {
             this data from the device. A full Privacy Policy will replace \
             this text before public release.
             """
+        case .guidelines:
+            """
+            Click is for meeting people, kindly. Be yourself — no \
+            impersonation, no fake profiles. Be respectful — harassment, \
+            hate and unwanted sexual content get accounts removed. Be an \
+            adult — Click is 18+, no exceptions. If someone makes you \
+            uncomfortable, use report or block from any card or chat; \
+            blocking hides them everywhere immediately.
+            """
         }
     }
 }
 
-private struct LegalSheet: View {
+struct LegalSheet: View {
     let document: LegalDocument
 
     var body: some View {

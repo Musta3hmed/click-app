@@ -18,4 +18,10 @@ enum DefaultsKey {
     static let demoPhotosLastFailure = "demoPhotosLastFailure"
     /// Device preference, not account data — AccountEraser leaves it alone.
     static let appearance = "appearanceSetting"
+
+    // Swipe deck filters (account-scoped; AccountEraser clears them).
+    static let filterMinAge = "filterMinAge"
+    static let filterMaxAge = "filterMaxAge"
+    static let filterVerifiedOnly = "filterVerifiedOnly"
+    static let filterInterests = "filterInterests"
 }

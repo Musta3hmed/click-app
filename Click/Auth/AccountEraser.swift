@@ -66,6 +66,10 @@ enum AccountEraser {
         defaults.removeObject(forKey: DefaultsKey.showMyState)
         defaults.removeObject(forKey: DefaultsKey.visibleInFindNewFriends)
         defaults.removeObject(forKey: DefaultsKey.demoPhotosLastFailure)
+        defaults.removeObject(forKey: DefaultsKey.filterMinAge)
+        defaults.removeObject(forKey: DefaultsKey.filterMaxAge)
+        defaults.removeObject(forKey: DefaultsKey.filterVerifiedOnly)
+        defaults.removeObject(forKey: DefaultsKey.filterInterests)
         // DefaultsKey.appearance stays — it is a device preference.
     }
 }

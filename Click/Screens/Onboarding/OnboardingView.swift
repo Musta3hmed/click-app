@@ -464,7 +464,7 @@ private struct BirthDateStep: View {
 
 // MARK: - Step 3: gender
 
-private struct GenderStep: View {
+struct GenderStep: View {
     @Binding var selection: Gender?
 
     var body: some View {
@@ -484,7 +484,7 @@ private struct GenderStep: View {
 
 // MARK: - Step 4: seeking (multi-select)
 
-private struct SeekingStep: View {
+struct SeekingStep: View {
     @Binding var selection: Set<SeekingPreference>
 
     var body: some View {
@@ -516,7 +516,7 @@ private struct SeekingStep: View {
 
 // MARK: - Shared choice row
 
-private struct ChoiceRow: View {
+struct ChoiceRow: View {
     let label: String
     let isSelected: Bool
     let action: () -> Void

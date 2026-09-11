@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var didCopyUsername = false
     @State private var copyRevertTask: Task<Void, Never>?
     @State private var confirmingSignOut = false
+    @State private var legalDocument: LegalDocument?
 
     // isDeleted guard: sign-out erases the row while the dismissal
     // transition still has this screen on screen for a frame.
@@ -44,7 +45,6 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 accountSection
-                swipeSection
                 customizationSection
                 visibilitySection
                 notificationsSection
@@ -57,6 +57,9 @@ struct SettingsView: View {
             .background(Theme.background)
             .navigationTitle("settings")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $legalDocument) { document in
+                LegalSheet(document: document)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -99,20 +102,16 @@ struct SettingsView: View {
             }
             .accessibilityHint("Copies your username")
 
-            NavigationLink {
-                Text("Age verification is handled during sign-up.")
-                    .font(.clickPlain(.body))
-                    .padding()
-            } label: {
-                LabeledContent("age", value: ageDescription)
-            }
+            // Age isn't editable — a chevron promised a screen that could
+            // never exist.
+            LabeledContent("age", value: ageDescription)
 
-            NavigationLink {
-                Text("Location settings")
-                    .font(.clickPlain(.body))
-                    .padding()
-            } label: {
-                LabeledContent("location", value: locationDescription)
+            if let me {
+                NavigationLink {
+                    LocationSettingsView(profile: me)
+                } label: {
+                    LabeledContent("location", value: locationDescription)
+                }
             }
 
             NavigationLink {
@@ -120,27 +119,6 @@ struct SettingsView: View {
             } label: {
                 Text("blocked users")
             }
-        }
-    }
-
-    private var swipeSection: some View {
-        Section {
-            NavigationLink {
-                Text("Interest preferences")
-                    .font(.clickPlain(.body))
-                    .padding()
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("swipe preferences")
-                    Text("We'll show you people who share at least one of the interests you select.")
-                        .font(.clickPlain(.footnote))
-                        .foregroundStyle(Theme.secondary)
-                }
-            }
-        } header: {
-            Text("swipe")
-        } footer: {
-            Text("Preferences subject to profile availability")
         }
     }
 
@@ -176,21 +154,30 @@ struct SettingsView: View {
         }
     }
 
+    // The dead rows (help, feature request, beta, account status, chat
+    // appearance, app icon) are gone — every remaining control leads to a
+    // real outcome.
     private var communitySection: some View {
         Section("community") {
-            NavigationLink("guidelines") { Text("Community guidelines").padding() }
-            NavigationLink("help") { Text("Help centre").padding() }
-            NavigationLink("is my account restricted?") { Text("Account status").padding() }
-            NavigationLink("submit a feature request") { Text("Feature requests").padding() }
-            NavigationLink("join the beta") { Text("Beta programme").padding() }
-            NavigationLink("write a review") { Text("Leave a review").padding() }
+            Button("guidelines") { legalDocument = .guidelines }
+                .foregroundStyle(Theme.primary)
+
+            Button("write a review") {
+                // App Store write-review deep link (placeholder id until
+                // the app is listed).
+                guard let url = URL(string: "https://apps.apple.com/app/id0000000000?action=write-review") else { return }
+                UIApplication.shared.open(url)
+            }
+            .foregroundStyle(Theme.primary)
         }
     }
 
     private var privacySection: some View {
         Section("privacy & safety") {
-            NavigationLink("privacy policy") { Text("Privacy policy").padding() }
-            NavigationLink("terms of service") { Text("Terms of service").padding() }
+            Button("privacy policy") { legalDocument = .privacy }
+                .foregroundStyle(Theme.primary)
+            Button("terms of service") { legalDocument = .terms }
+                .foregroundStyle(Theme.primary)
         }
     }
 
@@ -282,6 +269,28 @@ struct SettingsView: View {
             return "\(city), \(code)"
         }
         return me.countryCode ?? "not set"
+    }
+}
+
+// MARK: - Location settings
+
+/// Changing city post-onboarding — reuses the onboarding LocationStep.
+struct LocationSettingsView: View {
+    @Bindable var profile: UserProfile
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("City only. We never store your exact position.")
+                    .font(.clickPlain(.subheadline, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                LocationStep(profile: profile)
+            }
+            .padding(Theme.Metric.gutter)
+        }
+        .background(Theme.background)
+        .navigationTitle("location")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -2,9 +2,12 @@
 //  WelcomeCelebrationView.swift
 //  Click
 //
-//  One-time celebratory sheet shown the first time a user reaches the app
-//  after onboarding. The presenting flag lives in RootView
-//  (@AppStorage "welcomePopupShown") — it never fires twice.
+//  One-time celebratory takeover shown the first time a user reaches the
+//  app after onboarding (presented as a fullScreenCover from RootView; the
+//  flag lives in @AppStorage "welcomePopupShown" — it never fires twice).
+//  The entrance is gated on a short did-present delay so nothing animates
+//  while the cover is still travelling, and the cascade uses the same
+//  celebrate spring as the match overlay — celebrations move identically.
 //
 
 import SwiftUI
@@ -14,15 +17,16 @@ struct WelcomeCelebrationView: View {
     let onStart: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
+    @Environment(\.motion) private var motion
+    /// 0 nothing, 1 logo+confetti, 2 headline, 3 the rest.
+    @State private var stage = 0
     @AccessibilityFocusState private var headingFocused: Bool
 
     var body: some View {
         ZStack {
             Theme.brandGradient.ignoresSafeArea()
 
-            if !reduceMotion {
+            if !motion.reduceMotion && stage >= 1 {
                 ConfettiView(duration: 2.2)
             }
 
@@ -30,21 +34,38 @@ struct WelcomeCelebrationView: View {
                 Spacer()
 
                 ClickLogoView(size: 110)
-                    // Fade, don't zoom, under Reduce Motion.
-                    .scaleEffect(reduceMotion ? 1 : (appeared ? 1 : 0.5))
+                    .scaleEffect(stage >= 1 ? 1 : 0.5)
+                    .opacity(stage >= 1 ? 1 : 0)
 
                 Text(headline)
                     .font(.system(.largeTitle, design: .rounded).weight(.black).italic())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+                    .opacity(stage >= 2 ? 1 : 0)
+                    .scaleEffect(stage >= 2 ? 1 : 0.85)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityFocused($headingFocused)
 
-                Text("Your profile is live. Time to meet some people.")
-                    .font(.clickPlain(.headline, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    Text("Your profile is live. Time to meet some people.")
+                        .font(.clickPlain(.headline, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+
+                    HStack(spacing: 6) {
+                        CoinView(size: 20)
+                        Text("welcome bonus: \(Wallet.welcomeBonus) coins")
+                            .font(.click(.subheadline, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.16), in: Capsule())
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Welcome bonus: \(Wallet.welcomeBonus) coins")
+                }
+                .opacity(stage >= 3 ? 1 : 0)
 
                 Spacer()
 
@@ -60,25 +81,24 @@ struct WelcomeCelebrationView: View {
                         .background(.white, in: Capsule())
                 }
                 .buttonStyle(.click)
+                .opacity(stage >= 3 ? 1 : 0)
                 .accessibilityLabel("Start swiping")
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 24)
-            .opacity(appeared ? 1 : 0)
         }
-        .sensoryFeedback(.success, trigger: appeared) { _, new in new }
-        .onAppear {
-            withAnimation(
-                reduceMotion
-                    ? .easeInOut(duration: 0.2)
-                    : .spring(response: 0.6, dampingFraction: 0.65).delay(0.1)
-            ) {
-                appeared = true
+        // Haptic fires WITH the visible entrance, not on presentation.
+        .sensoryFeedback(.success, trigger: stage) { _, new in new == 1 }
+        .task {
+            // Entrance gated on the cover's travel time — half the confetti
+            // burst used to play before the screen was visible.
+            try? await Task.sleep(for: .seconds(0.32))
+            for step in 1...3 {
+                withAnimation(motion.celebrate) { stage = step }
+                try? await Task.sleep(for: .seconds(motion.stagger == 0 ? 0.02 : motion.stagger * 2))
             }
             headingFocused = true
         }
-        // Dismissible by swipe (sheet default) AND the button; modal for
-        // VoiceOver so focus stays inside.
         .accessibilityAddTraits(.isModal)
     }
 
@@ -88,7 +108,7 @@ struct WelcomeCelebrationView: View {
 }
 
 #Preview {
-    Color.clear.sheet(isPresented: .constant(true)) {
+    Color.clear.fullScreenCover(isPresented: .constant(true)) {
         WelcomeCelebrationView(name: "Jordan") {}
     }
 }

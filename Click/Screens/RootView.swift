@@ -15,6 +15,7 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthSession.self) private var auth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection: AppTab = .swipe
     @State private var chrome = ChromeState()
 
@@ -103,11 +104,22 @@ struct RootView: View {
         .environment(chrome)
         .task {
             MockData.seedIfNeeded(context)
+            Boost.foregroundTick(in: context)
             await DemoPhotos.seedIfNeeded(context)
         }
-        .sheet(isPresented: welcomeSheetBinding) {
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Boost.foregroundTick(in: context)
+            }
+        }
+        // Full-screen: a brand takeover inside a sheet's rounded card with
+        // a grabber was a register mismatch.
+        .fullScreenCover(isPresented: welcomeSheetBinding) {
             WelcomeCelebrationView(name: currentUserName) {
-                selection = .swipe
+                // One animated helper for the selection mutation — the pill
+                // used to teleport at the exact moment the app should feel
+                // celebratory.
+                withAnimation(Theme.Motion.state) { selection = .swipe }
                 welcomePopupShown = true
             }
         }

@@ -7,13 +7,9 @@ import SwiftUI
 
 struct SectionHeader: View {
     let title: String
-    var trailing: String? = nil
-    var trailingAction: (() -> Void)? = nil
 
-    init(_ title: String, trailing: String? = nil, trailingAction: (() -> Void)? = nil) {
+    init(_ title: String) {
         self.title = title
-        self.trailing = trailing
-        self.trailingAction = trailingAction
     }
 
     var body: some View {
@@ -23,12 +19,6 @@ struct SectionHeader: View {
                 .foregroundStyle(Theme.primary)
 
             Spacer()
-
-            if let trailing, let trailingAction {
-                Button(trailing, action: trailingAction)
-                    .font(.click(.subheadline, weight: .bold))
-                    .foregroundStyle(Theme.secondary)
-            }
         }
         .accessibilityAddTraits(.isHeader)
     }
@@ -43,10 +33,9 @@ struct PillButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button {
-            Haptics.impact(.light)
-            action()
-        } label: {
+        // No manual haptic here: the .click style provides it (the pair
+        // used to double-fire).
+        Button(action: action) {
             Text(title)
                 .font(.click(.headline, weight: .heavy))
                 .foregroundStyle(isEnabled ? Theme.onPrimary : Theme.secondary)
@@ -64,7 +53,6 @@ struct PillButton: View {
 #Preview {
     VStack(alignment: .leading, spacing: 24) {
         SectionHeader("boosters")
-        SectionHeader("offers", trailing: "see all") {}
         PillButton(title: "edit profile") {}
         PillButton(title: "add code", isEnabled: false) {}
     }

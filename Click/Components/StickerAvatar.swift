@@ -17,6 +17,8 @@ struct StickerAvatar: View {
     var badgeNumber: Int? = nil
     var isVerified: Bool = false
     var isOnline: Bool = false
+    /// A real photo wins over the initials gradient when provided.
+    var photo: UIImage? = nil
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -44,17 +46,24 @@ struct StickerAvatar: View {
         .accessibilityLabel(accessibilityText)
     }
 
+    @ViewBuilder
     private var avatarBody: some View {
-        LinearGradient(
-            colors: gradientColors,
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            Text(initials)
-                .font(.system(size: size * 0.38, weight: .heavy, design: .rounded))
-                .italic()
-                .foregroundStyle(.white)
+        if let photo {
+            Image(uiImage: photo)
+                .resizable()
+                .scaledToFill()
+        } else {
+            LinearGradient(
+                colors: gradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .overlay {
+                Text(initials)
+                    .font(.system(size: size * 0.38, weight: .heavy, design: .rounded))
+                    .italic()
+                    .foregroundStyle(.white)
+            }
         }
     }
 
