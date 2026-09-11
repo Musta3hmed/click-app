@@ -21,6 +21,24 @@ final class UserProfile {
     /// True for the single row representing the signed-in user.
     var isCurrentUser: Bool
 
+    // MARK: Onboarding answers
+    // Nil/default until onboarding fills them in. Seeded mock profiles get
+    // a gender so the deck filter has something to bite on.
+
+    var birthDate: Date?
+    var genderRaw: String?
+    /// The signed-in user's "who I want to meet" answer(s).
+    var seekingRaw: [String]
+
+    // Coarse location only — city-level, never precise coordinates.
+    var city: String?
+    var country: String?
+    /// ISO 3166-1 alpha-2, e.g. "AU". Drives `countryFlag`.
+    var countryCode: String?
+
+    @Relationship(deleteRule: .cascade, inverse: \ProfilePhoto.owner)
+    var photos: [ProfilePhoto]
+
     // MARK: Safety state
     // Blocking hides the profile everywhere. Muting only silences
     // notifications and keeps the conversation in place.
@@ -44,6 +62,7 @@ final class UserProfile {
         isCurrentUser: Bool = false,
         isBlocked: Bool = false,
         isMuted: Bool = false,
+        gender: Gender? = nil,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -60,6 +79,13 @@ final class UserProfile {
         self.isMuted = isMuted
         self.reportedReasonRaw = nil
         self.reportedAt = nil
+        self.birthDate = nil
+        self.genderRaw = gender?.rawValue
+        self.seekingRaw = []
+        self.city = nil
+        self.country = nil
+        self.countryCode = nil
+        self.photos = []
         self.createdAt = createdAt
     }
 
@@ -68,5 +94,57 @@ final class UserProfile {
         set { zodiacRaw = newValue.rawValue }
     }
 
+    var gender: Gender? {
+        get { genderRaw.flatMap(Gender.init(rawValue:)) }
+        set { genderRaw = newValue?.rawValue }
+    }
+
+    var seeking: [SeekingPreference] {
+        get { seekingRaw.compactMap(SeekingPreference.init(rawValue:)) }
+        set { seekingRaw = newValue.map(\.rawValue) }
+    }
+
+    /// Photos in display order; the first is the primary.
+    var orderedPhotos: [ProfilePhoto] {
+        photos.sorted { $0.sortIndex < $1.sortIndex }
+    }
+
     var isReported: Bool { reportedAt != nil }
+
+    /// Age derived from DOB when onboarding has provided one; otherwise the
+    /// stored (seeded) value.
+    var displayAge: Int {
+        guard let birthDate else { return age }
+        return Self.age(from: birthDate)
+    }
+
+    static func age(from birthDate: Date, on date: Date = .now) -> Int {
+        Calendar.current.dateComponents([.year], from: birthDate, to: date).year ?? 0
+    }
+
+    /// Regional-indicator flag for an ISO 3166-1 alpha-2 code.
+    static func flag(forCountryCode code: String) -> String {
+        code.uppercased().unicodeScalars.reduce(into: "") { flag, scalar in
+            if let indicator = UnicodeScalar(127397 + scalar.value) {
+                flag.unicodeScalars.append(indicator)
+            }
+        }
+    }
+}
+
+/// One profile photo. Bytes live in external storage so the SwiftData store
+/// file stays small; images are downscaled before they ever get here.
+@Model
+final class ProfilePhoto {
+    @Attribute(.unique) var id: UUID
+    @Attribute(.externalStorage) var data: Data
+    var sortIndex: Int
+    var owner: UserProfile?
+
+    init(id: UUID = UUID(), data: Data, sortIndex: Int, owner: UserProfile? = nil) {
+        self.id = id
+        self.data = data
+        self.sortIndex = sortIndex
+        self.owner = owner
+    }
 }

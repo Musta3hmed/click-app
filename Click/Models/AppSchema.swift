@@ -11,6 +11,7 @@ enum AppSchema {
     /// container and by the preview container so they cannot drift apart.
     static let models: [any PersistentModel.Type] = [
         UserProfile.self,
+        ProfilePhoto.self,
         Conversation.self,
         Message.self,
         Match.self,

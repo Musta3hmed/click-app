@@ -13,23 +13,15 @@ enum MockData {
 
     // MARK: - Seeding
 
-    /// Populates an empty store. Safe to call on every launch.
+    /// Populates an empty store with candidate profiles. Safe to call on
+    /// every launch. The CURRENT user's row is created by onboarding, not
+    /// here — so the guard counts only non-current profiles.
     static func seedIfNeeded(_ context: ModelContext) {
-        let existing = (try? context.fetchCount(FetchDescriptor<UserProfile>())) ?? 0
-        guard existing == 0 else { return }
-
-        let me = UserProfile(
-            name: "Jordan Ellis",
-            age: 18,
-            bio: "just here for the vibes",
-            countryFlag: "🇦🇺",
-            zodiac: .aquarius,
-            interests: ["music", "gaming", "gym"],
-            isVerified: true,
-            isOnline: true,
-            isCurrentUser: true
+        let descriptor = FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser }
         )
-        context.insert(me)
+        let existing = (try? context.fetchCount(descriptor)) ?? 0
+        guard existing == 0 else { return }
 
         let profiles = candidateProfiles()
         for profile in profiles {
@@ -47,29 +39,29 @@ enum MockData {
     // MARK: - Profiles
 
     private static func candidateProfiles() -> [UserProfile] {
-        let seeds: [(String, Int, String, String, Zodiac, [String], Bool)] = [
-            ("Maya Chen", 19, "coffee first, talk later ☕️", "🇦🇺", .virgo, ["coffee", "film", "art"], true),
-            ("Leo Martins", 21, "skate or sleep", "🇧🇷", .leo, ["skating", "music", "travel"], false),
-            ("Priya Raman", 20, "will out-argue you about movies", "🇮🇳", .gemini, ["film", "books", "debate"], true),
-            ("Noah Whitfield", 22, "gym → food → repeat", "🇬🇧", .taurus, ["gym", "food", "football"], false),
-            ("Sofia Rossi", 19, "chaotic good", "🇮🇹", .sagittarius, ["dance", "fashion", "travel"], false),
-            ("Kai Tanaka", 20, "producing beats at 3am", "🇯🇵", .pisces, ["music", "gaming", "anime"], true),
-            ("Amara Okafor", 21, "plant mum, dog aunt", "🇳🇬", .cancer, ["plants", "dogs", "cooking"], false),
-            ("Ethan Brooks", 23, "ask me about my fantasy team", "🇺🇸", .aries, ["sports", "gaming", "food"], false),
-            ("Lena Novak", 18, "sketching strangers on the tram", "🇵🇱", .libra, ["art", "coffee", "music"], false),
-            ("Diego Herrera", 22, "salsa lessons, no experience needed", "🇲🇽", .scorpio, ["dance", "cooking", "travel"], true),
-            ("Chloe Dubois", 20, "your nan's favourite", "🇫🇷", .capricorn, ["baking", "books", "cats"], false),
-            ("Arjun Patel", 21, "startup bro in recovery", "🇮🇳", .aquarius, ["tech", "gym", "coffee"], false),
-            ("Zoe Kelly", 19, "surf report is my horoscope", "🇦🇺", .pisces, ["surfing", "music", "dogs"], true),
-            ("Mateo Silva", 20, "two truths and a lie, go", "🇦🇷", .gemini, ["football", "music", "travel"], false),
-            ("Hana Kim", 22, "film photography enjoyer", "🇰🇷", .virgo, ["photography", "film", "coffee"], false),
-            ("Oscar Lindqvist", 23, "cold water swimmer, warm person", "🇸🇪", .taurus, ["swimming", "books", "hiking"], false),
-            ("Fatima Haddad", 20, "architecture student, tired", "🇱🇧", .leo, ["design", "art", "coffee"], true),
-            ("Ruby Thompson", 18, "I will beat you at Mario Kart", "🇳🇿", .aries, ["gaming", "music", "dogs"], false),
-            ("Tomas Novotny", 21, "climbing walls, literally", "🇨🇿", .sagittarius, ["climbing", "hiking", "food"], false),
-            ("Isla Fraser", 19, "playlist curator, professionally nosy", "🇬🇧", .cancer, ["music", "books", "film"], false),
-            ("Yusuf Demir", 22, "chess in the park, every Sunday", "🇹🇷", .libra, ["chess", "coffee", "travel"], false),
-            ("Nina Petrova", 20, "ballet then burgers", "🇷🇺", .scorpio, ["dance", "food", "art"], false)
+        let seeds: [(String, Int, String, String, Zodiac, [String], Bool, Gender)] = [
+            ("Maya Chen", 19, "coffee first, talk later ☕️", "🇦🇺", .virgo, ["coffee", "film", "art"], true, .woman),
+            ("Leo Martins", 21, "skate or sleep", "🇧🇷", .leo, ["skating", "music", "travel"], false, .man),
+            ("Priya Raman", 20, "will out-argue you about movies", "🇮🇳", .gemini, ["film", "books", "debate"], true, .woman),
+            ("Noah Whitfield", 22, "gym → food → repeat", "🇬🇧", .taurus, ["gym", "food", "football"], false, .man),
+            ("Sofia Rossi", 19, "chaotic good", "🇮🇹", .sagittarius, ["dance", "fashion", "travel"], false, .woman),
+            ("Kai Tanaka", 20, "producing beats at 3am", "🇯🇵", .pisces, ["music", "gaming", "anime"], true, .man),
+            ("Amara Okafor", 21, "plant mum, dog aunt", "🇳🇬", .cancer, ["plants", "dogs", "cooking"], false, .woman),
+            ("Ethan Brooks", 23, "ask me about my fantasy team", "🇺🇸", .aries, ["sports", "gaming", "food"], false, .man),
+            ("Lena Novak", 18, "sketching strangers on the tram", "🇵🇱", .libra, ["art", "coffee", "music"], false, .woman),
+            ("Diego Herrera", 22, "salsa lessons, no experience needed", "🇲🇽", .scorpio, ["dance", "cooking", "travel"], true, .man),
+            ("Chloe Dubois", 20, "your nan's favourite", "🇫🇷", .capricorn, ["baking", "books", "cats"], false, .woman),
+            ("Arjun Patel", 21, "startup bro in recovery", "🇮🇳", .aquarius, ["tech", "gym", "coffee"], false, .man),
+            ("Zoe Kelly", 19, "surf report is my horoscope", "🇦🇺", .pisces, ["surfing", "music", "dogs"], true, .woman),
+            ("Mateo Silva", 20, "two truths and a lie, go", "🇦🇷", .gemini, ["football", "music", "travel"], false, .man),
+            ("Hana Kim", 22, "film photography enjoyer", "🇰🇷", .virgo, ["photography", "film", "coffee"], false, .woman),
+            ("Oscar Lindqvist", 23, "cold water swimmer, warm person", "🇸🇪", .taurus, ["swimming", "books", "hiking"], false, .man),
+            ("Fatima Haddad", 20, "architecture student, tired", "🇱🇧", .leo, ["design", "art", "coffee"], true, .woman),
+            ("Ruby Thompson", 18, "I will beat you at Mario Kart", "🇳🇿", .aries, ["gaming", "music", "dogs"], false, .woman),
+            ("Tomas Novotny", 21, "climbing walls, literally", "🇨🇿", .sagittarius, ["climbing", "hiking", "food"], false, .man),
+            ("Isla Fraser", 19, "playlist curator, professionally nosy", "🇬🇧", .cancer, ["music", "books", "film"], false, .woman),
+            ("Yusuf Demir", 22, "chess in the park, every Sunday", "🇹🇷", .libra, ["chess", "coffee", "travel"], false, .man),
+            ("Nina Petrova", 20, "ballet then burgers", "🇷🇺", .scorpio, ["dance", "food", "art"], false, .woman)
         ]
 
         return seeds.enumerated().map { index, seed in
@@ -81,7 +73,8 @@ enum MockData {
                 zodiac: seed.4,
                 interests: seed.5,
                 isVerified: seed.6,
-                isOnline: index % 3 == 0
+                isOnline: index % 3 == 0,
+                gender: seed.7
             )
         }
     }
@@ -180,6 +173,29 @@ enum MockData {
         // here is the correct behaviour.
         let container = try! ModelContainer(for: schema, configurations: [configuration])
         seedIfNeeded(container.mainContext)
+
+        // Previews skip onboarding, so fabricate the current-user row that
+        // onboarding would normally create.
+        let me = UserProfile(
+            name: "Jordan",
+            age: 18,
+            bio: "just here for the vibes",
+            countryFlag: "🇦🇺",
+            zodiac: .aquarius,
+            interests: ["music", "gaming", "gym"],
+            isVerified: true,
+            isOnline: true,
+            isCurrentUser: true,
+            gender: .man
+        )
+        me.birthDate = Calendar.current.date(byAdding: .year, value: -18, to: .now)
+        me.seeking = [.everyone]
+        me.city = "Sydney"
+        me.country = "Australia"
+        me.countryCode = "AU"
+        container.mainContext.insert(me)
+        try? container.mainContext.save()
+
         return container
     }()
 }

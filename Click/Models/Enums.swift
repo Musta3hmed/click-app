@@ -85,6 +85,51 @@ enum ReportReason: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Self-described gender, set during onboarding.
+enum Gender: String, CaseIterable, Identifiable, Codable {
+    case man
+    case woman
+    case nonBinary
+    case preferNotToSay
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .man: "Man"
+        case .woman: "Woman"
+        case .nonBinary: "Non-binary"
+        case .preferNotToSay: "Prefer not to say"
+        }
+    }
+}
+
+/// Who the user wants to meet. Multi-select; drives the swipe deck filter.
+enum SeekingPreference: String, CaseIterable, Identifiable, Codable {
+    case men
+    case women
+    case everyone
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .men: "Men"
+        case .women: "Women"
+        case .everyone: "Everyone"
+        }
+    }
+
+    /// Whether a profile with this gender falls inside the preference.
+    func includes(_ gender: Gender) -> Bool {
+        switch self {
+        case .everyone: true
+        case .men: gender == .man
+        case .women: gender == .woman
+        }
+    }
+}
+
 enum Zodiac: String, CaseIterable, Codable {
     case aries, taurus, gemini, cancer, leo, virgo
     case libra, scorpio, sagittarius, capricorn, aquarius, pisces

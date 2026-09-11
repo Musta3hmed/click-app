@@ -9,6 +9,10 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(AuthSession.self) private var auth
+
+    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    @AppStorage("onboardingStep") private var onboardingStep = 0
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -189,7 +193,14 @@ struct SettingsView: View {
                 isPresented: $confirmingSignOut,
                 titleVisibility: .visible
             ) {
-                Button("Disconnect", role: .destructive) { dismiss() }
+                Button("Disconnect", role: .destructive) {
+                    dismiss()
+                    // Local profile data stays; only the session and the
+                    // onboarding gate reset. Next sign-in resumes cleanly.
+                    onboardingCompleted = false
+                    onboardingStep = 0
+                    auth.signOut()
+                }
                 Button("Cancel", role: .cancel) {}
             }
         }
@@ -253,5 +264,6 @@ struct BlockedUsersView: View {
 
 #Preview {
     SettingsView()
+        .environment(AuthSession())
         .modelContainer(MockData.previewContainer)
 }

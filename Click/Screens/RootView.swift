@@ -2,8 +2,10 @@
 //  RootView.swift
 //  Click
 //
-//  Custom tab shell. A plain TabView would draw its own bar, so the screens
-//  are swapped manually and FloatingTabBar is layered on top.
+//  Routes between the three app phases — welcome (signed out), onboarding
+//  (signed in, profile incomplete), and the tab shell — then hosts the
+//  custom floating tab bar. A plain TabView would draw its own bar, so the
+//  screens are swapped manually and FloatingTabBar is layered on top.
 //
 
 import SwiftUI
@@ -11,19 +13,39 @@ import SwiftData
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
-    @State private var selection: AppTab = .chats
+    @Environment(AuthSession.self) private var auth
+    @State private var selection: AppTab = .swipe
+
+    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
 
     @Query private var conversations: [Conversation]
 
-    @AppStorage("isSignedIn") private var isSignedIn = false
-
     var body: some View {
-        if isSignedIn {
-            mainShell
-        } else {
-            WelcomeView()
-                .transition(.opacity)
+        Group {
+            switch auth.state {
+            case .restoring:
+                launchPlaceholder
+            case .signedOut:
+                WelcomeView()
+                    .transition(.opacity)
+            case .signedIn:
+                if onboardingCompleted {
+                    mainShell
+                        .transition(.opacity)
+                } else {
+                    OnboardingView()
+                        .transition(.opacity)
+                }
+            }
         }
+        .animation(.easeInOut(duration: 0.4), value: auth.state)
+        .animation(.easeInOut(duration: 0.4), value: onboardingCompleted)
+    }
+
+    /// Shown for the instant it takes to read the Keychain — brand wash so
+    /// there is no white flash before WelcomeView.
+    private var launchPlaceholder: some View {
+        Theme.brandGradient.ignoresSafeArea()
     }
 
     private var mainShell: some View {
@@ -56,5 +78,6 @@ struct RootView: View {
 
 #Preview {
     RootView()
+        .environment(AuthSession())
         .modelContainer(MockData.previewContainer)
 }
