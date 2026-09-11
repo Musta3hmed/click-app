@@ -59,8 +59,13 @@ enum AccountEraser {
         try? context.save()
 
         let defaults = UserDefaults.standard
-        defaults.set(false, forKey: "onboardingCompleted")
-        defaults.set(0, forKey: "onboardingStep")
-        defaults.set(false, forKey: "welcomePopupShown")
+        defaults.set(false, forKey: DefaultsKey.onboardingCompleted)
+        defaults.set(0, forKey: DefaultsKey.onboardingStep)
+        defaults.set(false, forKey: DefaultsKey.welcomePopupShown)
+        // Account-scoped preferences must not leak to the next sign-in.
+        defaults.removeObject(forKey: DefaultsKey.showMyState)
+        defaults.removeObject(forKey: DefaultsKey.visibleInFindNewFriends)
+        defaults.removeObject(forKey: DefaultsKey.demoPhotosLastFailure)
+        // DefaultsKey.appearance stays — it is a device preference.
     }
 }

@@ -11,6 +11,7 @@ struct ConversationView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(ChromeState.self) private var chrome
     @State private var draft = ""
 
     var body: some View {
@@ -31,6 +32,13 @@ struct ConversationView: View {
         .onAppear {
             conversation.unreadCount = 0
             try? context.save()
+            // Full-height thread: the floating tab bar overlaid the
+            // composer. onDisappear covers pop, block-induced dismiss and
+            // the zoom transition alike.
+            chrome.tabBarHidden = true
+        }
+        .onDisappear {
+            chrome.tabBarHidden = false
         }
         // Blocking mid-conversation must take effect where it happened:
         // pop the screen instead of leaving the thread readable.
@@ -51,6 +59,7 @@ struct ConversationView: View {
                 .padding(.horizontal, Theme.Metric.gutter)
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onAppear {
                 if let last = conversation.sortedMessages.last {
                     proxy.scrollTo(last.id, anchor: .bottom)
@@ -136,5 +145,6 @@ private struct MessageBubble: View {
             )
         )
     }
+    .environment(ChromeState())
     .modelContainer(MockData.previewContainer)
 }

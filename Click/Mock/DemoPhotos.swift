@@ -20,7 +20,7 @@ enum DemoPhotos {
     /// Fetch 2–4 gender-matched faces for every candidate profile that has
     /// none. Progressive: each profile's photos save as they arrive, so
     /// cards fill in while the app is used. Safe to call on every launch.
-    private static let lastFailureKey = "demoPhotosLastFailure"
+    private static let lastFailureKey = DefaultsKey.demoPhotosLastFailure
 
     @MainActor
     static func seedIfNeeded(_ context: ModelContext) async {

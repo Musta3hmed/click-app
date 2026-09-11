@@ -45,8 +45,8 @@ struct OnboardingView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthSession.self) private var auth
 
-    @AppStorage("onboardingStep") private var storedStep = 0
-    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    @AppStorage(DefaultsKey.onboardingStep) private var storedStep = 0
+    @AppStorage(DefaultsKey.onboardingCompleted) private var onboardingCompleted = false
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -188,9 +188,10 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.onPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(canContinue ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.separator), in: Capsule())
+                // Plain Color is animatable; AnyShapeStyle erasure wasn't.
+                .background(canContinue ? Theme.primary : Theme.separator, in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.click)
         .disabled(!canContinue)
         .accessibilityLabel(step == .location ? "Finish onboarding" : "Continue")
     }
@@ -275,6 +276,7 @@ struct OnboardingView: View {
         case .birthDate:
             profile.birthDate = birthDate
             profile.age = UserProfile.age(from: birthDate)
+            profile.zodiac = Zodiac.from(birthDate: birthDate)
         case .gender:
             profile.gender = gender
         case .seeking:
@@ -294,10 +296,15 @@ struct OnboardingView: View {
 
         if step == .location {
             onboardingCompleted = true
-            storedStep = 0
             Haptics.notify(.success)
+            // Reset AFTER the completion cross-fade — resetting immediately
+            // made the user watch step 1 flash back in as onboarding faded.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.5))
+                storedStep = 0
+            }
         } else {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            withAnimation(Theme.Motion.screen) {
                 storedStep += 1
             }
         }
@@ -306,7 +313,7 @@ struct OnboardingView: View {
     private func goBack() {
         guard step != .name else { return }
         Haptics.selection()
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        withAnimation(Theme.Motion.screen) {
             storedStep -= 1
         }
     }
@@ -516,7 +523,7 @@ private struct ChoiceRow: View {
 
     var body: some View {
         Button {
-            Haptics.selection()
+            // Haptic comes from the .click style — no double-fire.
             action()
         } label: {
             HStack {
@@ -527,15 +534,16 @@ private struct ChoiceRow: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(isSelected ? Theme.onPrimary : Theme.secondary)
+                    .contentTransition(.symbolEffect(.replace))
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
             .background(
-                isSelected ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.surface),
+                isSelected ? Theme.primary : Theme.surface,
                 in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.click)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }

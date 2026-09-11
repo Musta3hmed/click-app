@@ -16,8 +16,9 @@ struct RootView: View {
     @Environment(AuthSession.self) private var auth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selection: AppTab = .swipe
+    @State private var chrome = ChromeState()
 
-    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    @AppStorage(DefaultsKey.onboardingCompleted) private var onboardingCompleted = false
 
     @Query private var conversations: [Conversation]
 
@@ -80,10 +81,19 @@ struct RootView: View {
             }
             .transition(.opacity)
 
-            FloatingTabBar(selection: $selection, badges: badges)
-                // Real margin on devices without a home indicator (SE).
-                .padding(.bottom, 10)
+            if !chrome.tabBarHidden {
+                FloatingTabBar(selection: $selection, badges: badges)
+                    // Real margin on devices without a home indicator (SE).
+                    .padding(.bottom, 10)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
+            }
         }
+        .animation(Theme.Motion.state, value: chrome.tabBarHidden)
+        .environment(chrome)
         .task {
             MockData.seedIfNeeded(context)
             await DemoPhotos.seedIfNeeded(context)
@@ -98,7 +108,7 @@ struct RootView: View {
 
     // MARK: - First-run welcome popup
 
-    @AppStorage("welcomePopupShown") private var welcomePopupShown = false
+    @AppStorage(DefaultsKey.welcomePopupShown) private var welcomePopupShown = false
 
     /// Fires exactly once: the first arrival in the shell after onboarding.
     private var welcomeSheetBinding: Binding<Bool> {

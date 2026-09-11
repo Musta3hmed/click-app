@@ -10,6 +10,11 @@ import SwiftData
 struct ClickApp: App {
     @State private var authSession = AuthSession()
 
+    // The ONE place the appearance override is applied. Sheets get their
+    // own host windows, so .preferredColorScheme anywhere lower does not
+    // propagate — do not add it elsewhere.
+    @AppStorage(DefaultsKey.appearance) private var appearanceRaw = AppearanceSetting.system.rawValue
+
     let sharedModelContainer: ModelContainer = {
         let schema = Schema(AppSchema.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -25,6 +30,9 @@ struct ClickApp: App {
         WindowGroup {
             RootView()
                 .environment(authSession)
+                .preferredColorScheme(
+                    (AppearanceSetting(rawValue: appearanceRaw) ?? .system).colorScheme
+                )
                 .task { await authSession.restore() }
         }
         .modelContainer(sharedModelContainer)

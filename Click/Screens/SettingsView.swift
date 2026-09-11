@@ -18,13 +18,27 @@ struct SettingsView: View {
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
 
-    @AppStorage("showMyState") private var showMyState = false
-    @AppStorage("visibleInFindNewFriends") private var visibleInFind = false
+    @AppStorage(DefaultsKey.showMyState) private var showMyState = false
+    @AppStorage(DefaultsKey.appearance) private var appearanceRaw = AppearanceSetting.system.rawValue
 
     @State private var didCopyUsername = false
+    @State private var copyRevertTask: Task<Void, Never>?
     @State private var confirmingSignOut = false
 
-    private var me: UserProfile? { currentUsers.first }
+    // isDeleted guard: sign-out erases the row while the dismissal
+    // transition still has this screen on screen for a frame.
+    private var me: UserProfile? { currentUsers.first { !$0.isDeleted } }
+
+    private var appearance: Binding<AppearanceSetting> {
+        Binding(
+            get: { AppearanceSetting(rawValue: appearanceRaw) ?? .system },
+            set: { newValue in
+                withAnimation(Theme.Motion.screenFade) {
+                    appearanceRaw = newValue.rawValue
+                }
+            }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -66,6 +80,12 @@ struct SettingsView: View {
                 UIPasteboard.general.string = username
                 Haptics.notify(.success)
                 didCopyUsername = true
+                copyRevertTask?.cancel()
+                copyRevertTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(Theme.Motion.state) { didCopyUsername = false }
+                }
             } label: {
                 LabeledContent("username") {
                     HStack(spacing: 6) {
@@ -126,19 +146,22 @@ struct SettingsView: View {
 
     private var customizationSection: some View {
         Section("customization") {
-            NavigationLink("chat") {
-                Text("Chat appearance").padding()
+            Picker("appearance", selection: appearance) {
+                ForEach(AppearanceSetting.allCases) { setting in
+                    Text(setting.label).tag(setting)
+                }
             }
-            NavigationLink("change app icon") {
-                Text("App icon picker").padding()
-            }
+            .pickerStyle(.segmented)
         }
     }
 
     private var visibilitySection: some View {
-        Section("visibility") {
-            Toggle("show my state", isOn: $showMyState)
-            Toggle("visible in find new friends", isOn: $visibleInFind)
+        Section {
+            Toggle("show when I'm online", isOn: $showMyState)
+        } header: {
+            Text("visibility")
+        } footer: {
+            Text("When off, other people don't see your online indicator.")
         }
         .tint(Theme.primary)
     }
