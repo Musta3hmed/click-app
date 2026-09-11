@@ -62,18 +62,28 @@ can see the other's uncommitted work.
 
 ## Current state
 
-The app is **Click**, a swipe-to-meet social discovery app. Three tabs behind a
-custom floating tab bar: chats, swipe, profile — gated behind WelcomeView (animated sign-in screen; mock auth via @AppStorage "isSignedIn"). All data is local SwiftData with
-seeded mock content — there is no backend.
+The app is **Click**, a swipe-to-meet social discovery app. Flow: WelcomeView
+(animated sign-in) → OnboardingView (name, 18+ DOB gate, gender, seeking,
+photos, coarse location; resumable, persists per step) → three tabs behind a
+custom floating tab bar (chats, swipe, profile). Auth is a real architecture
+(`Click/Auth/`): AuthProvider protocol, Keychain-stored session, full Apple +
+Google (PKCE) implementations gated behind AuthConfig until a paid Apple dev
+account / Google client ID exist — mocks run meanwhile, labelled in the UI.
+All data is local SwiftData with seeded mock content — there is no backend.
+Brand is the orange/pink of the logo (Theme.brand*); the deck filters by the
+user's seeking preference; coins are vector smileys (CoinView).
 
 Source layout inside `Click/`:
 
 ```
-Support/     Theme.swift (all design tokens), Haptics, SafetyCenter
-Components/  The six reusable views — build new UI from these
+Auth/        AuthProvider, AuthSession, KeychainStore, Apple/Google/Mock providers
+Support/     Theme.swift (all design tokens), Haptics, SafetyCenter,
+             LocationService, ImageProcessing, ClickButtonStyle
+Components/  Reusable views (incl. CoinView, ConfettiView) — build new UI from these
 Models/      SwiftData @Model types + AppSchema (schema source of truth)
 Mock/        MockData.swift — replace wholesale when a backend lands
-Screens/     RootView, WelcomeView (sign-in gate), ChatsView, SwipeView, ProfileView, ConversationView, SettingsView
+Screens/     RootView, WelcomeView, Onboarding/, ChatsView, SwipeView,
+             ProfileView, ConversationView, SettingsView
 ```
 
 Conventions that matter:

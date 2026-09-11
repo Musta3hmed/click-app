@@ -22,7 +22,7 @@ jobs:
       - name: Build
         run: |
           set -o pipefail
-          xcodebuild build \
+          xcodebuild build-for-testing \
             -project Click.xcodeproj \
             -scheme Click \
             -destination 'generic/platform=iOS Simulator' \
