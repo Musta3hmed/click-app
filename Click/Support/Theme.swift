@@ -79,6 +79,37 @@ enum Theme {
     static let accent = Color(hex: 0xFF3B5C)
     static let online = Color(hex: 0x34C759)
     static let coin = Color(hex: 0xE8B21E)
+    static let coinDark = Color(hex: 0xB8860B)
+    static let verified = Color(hex: 0x2D9CF0)
+    static let violetDark = Color(hex: 0x5F3DC4)
+
+    /// Deterministic decorative gradients for avatars and photo-less cards.
+    /// Warm-leaning to match the brand, with enough spread to tell people apart.
+    static let avatarGradients: [[Color]] = [
+        [Color(hex: 0xFF9A4C), Color(hex: 0xFFD43B)],
+        [Color(hex: 0xFF6B8A), Color(hex: 0xFFB199)],
+        [Color(hex: 0x845EF7), Color(hex: 0xB197FC)],
+        [Color(hex: 0xFFA94D), Color(hex: 0xFF4D67)],
+        [Color(hex: 0x20C997), Color(hex: 0x63E6BE)],
+        [Color(hex: 0xFF8787), Color(hex: 0xFFA8A8)],
+        [Color(hex: 0xF06595), Color(hex: 0xFAA2C1)],
+        [Color(hex: 0xFF5A5F), Color(hex: 0xFF2D8F)]
+    ]
+
+    static let cardGradients: [[Color]] = [
+        [Color(hex: 0xFF9A4C), Color(hex: 0xE8590C)],
+        [Color(hex: 0xFF6B8A), Color(hex: 0xC2255C)],
+        [Color(hex: 0x845EF7), Color(hex: 0x4C2FA8)],
+        [Color(hex: 0xFFA94D), Color(hex: 0xFF4D67)],
+        [Color(hex: 0x20C997), Color(hex: 0x0C8A6A)],
+        [Color(hex: 0xF06595), Color(hex: 0xAD1457)]
+    ]
+
+    /// Stable pick from a gradient set for a given name.
+    static func gradient(for name: String, in palette: [[Color]]) -> [Color] {
+        let hash = abs(name.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) })
+        return palette[hash % palette.count]
+    }
 
     static let separator = Color(light: 0xE6E6E0, dark: 0x33333A)
 

@@ -22,6 +22,8 @@ struct ProfileView: View {
 
     @State private var showingSettings = false
     @State private var referralCode = ""
+    /// Bumped when coins are earned so the wallet coin spins.
+    @State private var coinEarnTrigger = 0
     /// Fixed end point so the countdown does not reset on every redraw.
     @State private var offerEndsAt = Date().addingTimeInterval(24 * 60 * 60)
 
@@ -64,13 +66,16 @@ struct ProfileView: View {
             HStack(spacing: 10) {
                 Spacer()
                 GlassCapsule {
-                    Image(systemName: "hexagon.fill")
-                        .foregroundStyle(Theme.coin)
+                    CoinView(size: 20, earnTrigger: coinEarnTrigger)
                     Text("\(wallet?.coins ?? 0)")
                         .font(.click(.subheadline, weight: .heavy))
                         .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: wallet?.coins ?? 0)
                 }
                 .font(.system(size: 15, weight: .bold))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(wallet?.coins ?? 0) coins")
 
                 GlassCircleButton(systemImage: "gearshape.fill", accessibilityTitle: "Settings") {
                     showingSettings = true
@@ -83,14 +88,16 @@ struct ProfileView: View {
 
     private var identityBlock: some View {
         VStack(spacing: 12) {
+            // Half in the header, half in the sheet — a deliberate straddle,
+            // with matching negative padding so the flow below stays even.
             StickerAvatar(
                 name: me?.name ?? "You",
                 size: 132,
-                badgeNumber: me?.age,
+                badgeNumber: me?.displayAge,
                 isVerified: me?.isVerified ?? false
             )
-            .offset(y: -72)
-            .padding(.bottom, -64)
+            .offset(y: -66 - Theme.Metric.sheetOverlap / 2)
+            .padding(.bottom, -(66 - 8) - Theme.Metric.sheetOverlap / 2)
 
             HStack(spacing: 8) {
                 Text(me?.countryFlag ?? "🇦🇺")
@@ -119,13 +126,13 @@ struct ProfileView: View {
                         title: "Royal Offer",
                         subtitle: "Limited-Time Steal!",
                         endsAt: offerEndsAt,
-                        tint: [Color(hex: 0xE8B21E), Color(hex: 0xB8860B)]
+                        tint: [Theme.coin, Theme.coinDark]
                     )
                     OfferCard(
                         title: "Starter Pack",
                         subtitle: "First-timers only",
                         endsAt: offerEndsAt.addingTimeInterval(3_600),
-                        tint: [Color(hex: 0x845EF7), Color(hex: 0x5F3DC4)]
+                        tint: [Theme.brandViolet, Theme.violetDark]
                     )
                 }
                 .padding(.horizontal, Theme.Metric.gutter)
@@ -235,6 +242,7 @@ struct ProfileView: View {
         reward.claimedAt = .now
         wallet?.coins += reward.coinValue
         try? context.save()
+        coinEarnTrigger += 1
         Haptics.notify(.success)
     }
 
@@ -336,7 +344,7 @@ private struct SubscriptionCard: View {
     let isSubscriber: Bool
 
     private let perks = [
-        ("hexagon.fill", "1000 Coins /wk"),
+        ("circle.fill", "1000 Coins /wk"),
         ("lock.open.fill", "Unlimited Reveal"),
         ("arrow.uturn.backward", "Unlimited Rewinds"),
         ("plus.circle.fill", "+ 5 more")
@@ -363,11 +371,19 @@ private struct SubscriptionCard: View {
                 spacing: 10
             ) {
                 ForEach(perks, id: \.1) { perk in
-                    Label(perk.1, systemImage: perk.0)
-                        .font(.clickPlain(.footnote, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                    Label {
+                        Text(perk.1)
+                    } icon: {
+                        if perk.0 == "circle.fill" {
+                            CoinView(size: 15)
+                        } else {
+                            Image(systemName: perk.0)
+                        }
+                    }
+                    .font(.clickPlain(.footnote, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 }
             }
         }
@@ -395,9 +411,7 @@ private struct CoinPackCard: View {
                         .foregroundStyle(Theme.secondary)
                 }
                 Spacer()
-                Image(systemName: "hexagon.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(Theme.coin)
+                CoinView(size: 26)
             }
 
             Text(pack.price)
@@ -455,7 +469,7 @@ private struct ChallengeCard: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color(hex: 0xFF6B8A), Color(hex: 0x845EF7)],
+                                colors: [Theme.brandCoral, Theme.brandViolet],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -465,7 +479,7 @@ private struct ChallengeCard: View {
                         .offset(x: CGFloat(index) * 20 - 10)
                 }
             }
-            .shadow(color: Color(hex: 0xFF6B8A).opacity(0.5), radius: 12)
+            .shadow(color: Theme.brandCoral.opacity(0.5), radius: 12)
         }
         .padding(18)
         .background(Color.black)
@@ -483,9 +497,17 @@ private struct DailyRewardCard: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: reward.coinValue > 0 ? "hexagon.fill" : "heart.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(iconColor)
+            if reward.coinValue > 0 && !reward.isClaimed && isActive {
+                CoinView(size: 28, animatesIdle: true)
+            } else if reward.coinValue > 0 {
+                CoinView(size: 28)
+                    .saturation(reward.isClaimed || !isActive ? 0 : 1)
+                    .opacity(reward.isClaimed || !isActive ? 0.5 : 1)
+            } else {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(iconColor)
+            }
 
             Text(reward.rewardLabel)
                 .font(.click(.footnote, weight: .heavy))

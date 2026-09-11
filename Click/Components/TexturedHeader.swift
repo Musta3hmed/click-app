@@ -44,7 +44,7 @@ struct TexturedHeader<Trailing: View>: View {
             .padding(.horizontal, Theme.Metric.gutter)
             .padding(.bottom, Theme.Metric.sheetOverlap + 12)
         }
-        .frame(height: 168)
+        .frame(height: 188)
         .ignoresSafeArea(edges: .top)
     }
 }

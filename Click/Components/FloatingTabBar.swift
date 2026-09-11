@@ -71,6 +71,8 @@ struct FloatingTabBar: View {
 
                     if badge > 0 {
                         Text(badge > 99 ? "99+" : "\(badge)")
+                            .contentTransition(.numericText())
+                            .animation(.snappy, value: badge)
                             .font(.system(size: 10, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)

@@ -69,7 +69,7 @@ struct StickerAvatar: View {
             if isVerified {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: size * 0.20, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x2D9CF0))
+                    .foregroundStyle(Theme.verified)
             }
         }
         .padding(.horizontal, size * 0.08)
@@ -93,14 +93,7 @@ struct StickerAvatar: View {
 
     /// Deterministic colour pair so a given name always looks the same.
     private var gradientColors: [Color] {
-        let palette: [(UInt32, UInt32)] = [
-            (0x3BB8F5, 0x7FD4F7), (0xFF6B8A, 0xFFB199), (0x845EF7, 0xB197FC),
-            (0xFFA94D, 0xFFD43B), (0x20C997, 0x63E6BE), (0xFF8787, 0xFFA8A8),
-            (0x4DABF7, 0x74C0FC), (0xF06595, 0xFAA2C1)
-        ]
-        let hash = abs(name.unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) })
-        let pair = palette[hash % palette.count]
-        return [Color(hex: pair.0), Color(hex: pair.1)]
+        Theme.gradient(for: name, in: Theme.avatarGradients)
     }
 }
 

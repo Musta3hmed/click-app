@@ -14,6 +14,7 @@ struct ChatsView: View {
     private var candidates: [UserProfile]
 
     @State private var folder: ChatFolder = .messages
+    @Namespace private var zoom
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,7 @@ struct ChatsView: View {
             .ignoresSafeArea(edges: .top)
             .navigationDestination(for: Conversation.self) { conversation in
                 ConversationView(conversation: conversation)
+                    .navigationTransition(.zoom(sourceID: conversation.id, in: zoom))
             }
         }
     }
@@ -50,11 +52,10 @@ struct ChatsView: View {
             HStack(spacing: 10) {
                 GlassCapsule {
                     Image(systemName: "gauge.with.needle.fill")
-                        .foregroundStyle(Color(hex: 0xFF8C42))
+                        .foregroundStyle(.white)
                     Image(systemName: "bolt.fill")
-                        .foregroundStyle(Color(hex: 0xA855F7))
-                    Image(systemName: "hexagon.fill")
-                        .foregroundStyle(Theme.coin)
+                        .foregroundStyle(Theme.brandViolet)
+                    CoinView(size: 18)
                 }
                 .font(.system(size: 16, weight: .bold))
 
@@ -72,6 +73,7 @@ struct ChatsView: View {
                     ConversationRow(conversation: conversation)
                 }
                 .buttonStyle(.plain)
+                .matchedTransitionSource(id: conversation.id, in: zoom)
 
                 Divider()
                     .overlay(Theme.separator)

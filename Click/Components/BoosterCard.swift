@@ -10,10 +10,10 @@ extension BoosterKind {
     /// free of SwiftUI.
     var tint: Color {
         switch self {
-        case .boost: Color(hex: 0xA855F7)
-        case .bulkChat: Color(hex: 0x22C55E)
+        case .boost: Theme.brandViolet
+        case .bulkChat: Theme.online
         case .admirers: Theme.coin
-        case .reveal: Color(hex: 0x3BB8F5)
+        case .reveal: Theme.verified
         case .superChat: Theme.accent
         }
     }
@@ -36,6 +36,8 @@ struct BoosterCard: View {
                 Text("\(count)")
                     .font(.click(.title3, weight: .heavy))
                     .foregroundStyle(Theme.primary)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: count)
                 Text(kind.label)
                     .font(.clickPlain(.footnote, weight: .medium))
                     .foregroundStyle(Theme.secondary)
@@ -56,7 +58,7 @@ struct BoosterCard: View {
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(Theme.primary))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.click)
             .accessibilityLabel("Buy more \(kind.label)")
         }
         .padding(.horizontal, 12)
