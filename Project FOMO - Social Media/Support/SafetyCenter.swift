@@ -1,0 +1,178 @@
+//
+//  SafetyCenter.swift
+//  Click
+//
+//  Report / block / mute. Required by App Store Review Guideline 1.2 for
+//  apps with user-generated content. Blocking is immediate and global:
+//  a blocked profile disappears from the swipe deck and the chat list.
+//
+
+import SwiftUI
+import SwiftData
+
+enum SafetyCenter {
+
+    static func block(_ profile: UserProfile, in context: ModelContext) {
+        profile.isBlocked = true
+        // A blocked user should not keep generating unread badges.
+        profile.isMuted = true
+        try? context.save()
+        Haptics.notify(.success)
+    }
+
+    static func unblock(_ profile: UserProfile, in context: ModelContext) {
+        profile.isBlocked = false
+        profile.isMuted = false
+        try? context.save()
+    }
+
+    static func toggleMute(_ profile: UserProfile, in context: ModelContext) {
+        profile.isMuted.toggle()
+        try? context.save()
+        Haptics.selection()
+    }
+
+    static func report(
+        _ profile: UserProfile,
+        reason: ReportReason,
+        alsoBlock: Bool,
+        in context: ModelContext
+    ) {
+        profile.reportedReasonRaw = reason.rawValue
+        profile.reportedAt = .now
+        if alsoBlock {
+            profile.isBlocked = true
+            profile.isMuted = true
+        }
+        try? context.save()
+        Haptics.notify(.success)
+    }
+}
+
+// MARK: - Report sheet
+
+struct ReportSheet: View {
+    let profile: UserProfile
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedReason: ReportReason?
+    @State private var alsoBlock = true
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(ReportReason.allCases) { reason in
+                        Button {
+                            Haptics.selection()
+                            selectedReason = reason
+                        } label: {
+                            HStack {
+                                Text(reason.label)
+                                    .foregroundStyle(Theme.primary)
+                                Spacer()
+                                if selectedReason == reason {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Theme.accent)
+                                        .fontWeight(.bold)
+                                }
+                            }
+                        }
+                        .accessibilityAddTraits(selectedReason == reason ? [.isSelected, .isButton] : .isButton)
+                    }
+                } header: {
+                    Text("Why are you reporting \(profile.name)?")
+                }
+
+                Section {
+                    Toggle("Also block \(profile.name)", isOn: $alsoBlock)
+                } footer: {
+                    Text("Blocking removes them from your swipe deck and chats immediately. Reports are reviewed by our moderation team.")
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        guard let selectedReason else { return }
+                        SafetyCenter.report(profile, reason: selectedReason, alsoBlock: alsoBlock, in: context)
+                        dismiss()
+                    } label: {
+                        Text("Submit report")
+                            .frame(maxWidth: .infinity)
+                            .fontWeight(.bold)
+                    }
+                    .disabled(selectedReason == nil)
+                }
+            }
+            .navigationTitle("Report")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Reusable safety menu
+
+/// Drop-in overflow menu for any profile or conversation surface.
+struct SafetyMenu: View {
+    let profile: UserProfile
+    @Environment(\.modelContext) private var context
+    @State private var showingReport = false
+    @State private var confirmingBlock = false
+
+    var body: some View {
+        Menu {
+            Button {
+                SafetyCenter.toggleMute(profile, in: context)
+            } label: {
+                Label(
+                    profile.isMuted ? "Unmute" : "Mute",
+                    systemImage: profile.isMuted ? "bell.fill" : "bell.slash.fill"
+                )
+            }
+
+            Button {
+                showingReport = true
+            } label: {
+                Label("Report", systemImage: "flag.fill")
+            }
+
+            Button(role: .destructive) {
+                confirmingBlock = true
+            } label: {
+                Label("Block", systemImage: "hand.raised.fill")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Safety options for \(profile.name)")
+        .sheet(isPresented: $showingReport) {
+            ReportSheet(profile: profile)
+        }
+        .confirmationDialog(
+            "Block \(profile.name)?",
+            isPresented: $confirmingBlock,
+            titleVisibility: .visible
+        ) {
+            Button("Block", role: .destructive) {
+                SafetyCenter.block(profile, in: context)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They will be removed from your swipe deck and chats. They won't be told.")
+        }
+    }
+}
+
+#Preview {
+    ReportSheet(profile: UserProfile(name: "Maya Chen", age: 19))
+        .modelContainer(MockData.previewContainer)
+}

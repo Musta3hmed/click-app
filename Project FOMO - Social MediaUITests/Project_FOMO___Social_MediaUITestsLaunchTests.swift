@@ -1,8 +1,11 @@
-//___FILEHEADER___
+//
+//  Project_FOMO___Social_MediaUITestsLaunchTests.swift
+//  Click
+//
 
 import XCTest
 
-final class ___FILEBASENAMEASIDENTIFIER___: XCTestCase {
+final class Project_FOMO___Social_MediaUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

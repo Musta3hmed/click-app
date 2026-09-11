@@ -64,6 +64,50 @@ can see the other's uncommitted work.
 
 ## Current state
 
-The app is still the stock Xcode SwiftUI + SwiftData template — a list that adds
-rows showing timestamps. No FOMO-specific features are implemented yet. The
-product direction has not been defined.
+The app is **Click**, a swipe-to-meet social discovery app. Three tabs behind a
+custom floating tab bar: chats, swipe, profile. All data is local SwiftData with
+seeded mock content — there is no backend.
+
+Source layout inside `Project FOMO - Social Media/`:
+
+```
+Support/     Theme.swift (all design tokens), Haptics, SafetyCenter
+Components/  The six reusable views — build new UI from these
+Models/      SwiftData @Model types + AppSchema (schema source of truth)
+Mock/        MockData.swift — replace wholesale when a backend lands
+Screens/     RootView, ChatsView, SwipeView, ProfileView, ConversationView, SettingsView
+```
+
+Conventions that matter:
+
+- **Never hard-code a colour or font.** Everything comes from `Theme` and the
+  `Font.click(_:)` / `Font.clickPlain(_:)` helpers, which is what keeps light
+  and dark mode working.
+- `AppSchema.models` is the single schema list. Add new `@Model` types there or
+  they will not persist.
+- Header textures are drawn procedurally in `TexturedHeader.swift`. Swap the
+  `Canvas` for an `Image` when real artwork exists.
+- Avatars are generated initials-on-gradient (`StickerAvatar`). Deterministic
+  per name, so they are stable across launches.
+
+## Known gotchas
+
+**Stale DerivedData breaks `@testable import`.** After deleting or renaming
+files in the synchronized source folder, the app's emitted module can go stale
+and every app symbol reads as "cannot find X in scope" from the test target —
+with no "no such module" error to explain it. Check
+`Build/Products/Debug-iphoneos/*.swiftmodule/*.abi.json`; if it says
+`"name": "NO_MODULE"`, the module is empty. Fix:
+
+```bash
+xcodebuild -project 'Project FOMO - Social Media.xcodeproj' -scheme 'Project FOMO - Social Media' clean
+```
+
+**The Xcode project was generated with broken template expansion.** The app
+entry point, the unit test file, and both UI test files all shipped with literal
+`___FILEHEADER___` / `___PACKAGENAME:identifier___` / `___FILEBASENAMEASIDENTIFIER___`
+placeholders that do not compile. All four are fixed. If you add a target and it
+fails with `expected '{' in struct`, this is why.
+
+**`#Predicate` needs `import Foundation`** — importing only SwiftData is not
+enough in test files.

@@ -1,8 +1,9 @@
 //
 //  Project_FOMO___Social_MediaApp.swift
-//  Project FOMO - Social Media
+//  Click
 //
-//  Created by Mustafa on 11/9/2026.
+//  The Xcode target is still named "Project FOMO - Social Media", so the
+//  @main type keeps its mangled template name. The product is called Click.
 //
 
 import SwiftUI
@@ -10,14 +11,12 @@ import SwiftData
 
 @main
 struct Project_FOMO___Social_MediaApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    let sharedModelContainer: ModelContainer = {
+        let schema = Schema(AppSchema.models)
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try ModelContainer(for: schema, configurations: [configuration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -25,7 +24,7 @@ struct Project_FOMO___Social_MediaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
         .modelContainer(sharedModelContainer)
     }

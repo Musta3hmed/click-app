@@ -1,0 +1,105 @@
+//
+//  Theme.swift
+//  Click
+//
+//  Design tokens. Every colour, font and metric in the app comes from here.
+//
+
+import SwiftUI
+
+// MARK: - Colour helpers
+
+extension Color {
+    /// Build a colour from a 0xRRGGBB literal.
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255.0,
+            green: Double((hex >> 8) & 0xFF) / 255.0,
+            blue: Double(hex & 0xFF) / 255.0,
+            opacity: 1.0
+        )
+    }
+
+    /// Build a colour that resolves differently in light and dark mode.
+    init(light: UInt32, dark: UInt32) {
+        self.init(uiColor: UIColor { traits in
+            UIColor(Color(hex: traits.userInterfaceStyle == .dark ? dark : light))
+        })
+    }
+}
+
+// MARK: - Theme
+
+enum Theme {
+
+    // Header gradient. Stays blue in both modes — it sits behind white text.
+    static let headerTop = Color(hex: 0x3BB8F5)
+    static let headerBottom = Color(hex: 0x7FD4F7)
+
+    static var headerGradient: LinearGradient {
+        LinearGradient(
+            colors: [headerTop, headerBottom],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    /// Warm off-white, deliberately not pure white.
+    static let background = Color(light: 0xF4F4EF, dark: 0x111114)
+    static let surface = Color(light: 0xFFFFFF, dark: 0x1C1C20)
+    static let surfaceRaised = Color(light: 0xFFFFFF, dark: 0x26262C)
+
+    /// Primary is black in light mode and white in dark — always the
+    /// highest-contrast fill. `onPrimary` is whatever sits on top of it.
+    static let primary = Color(light: 0x000000, dark: 0xF2F2F2)
+    static let onPrimary = Color(light: 0xFFFFFF, dark: 0x000000)
+
+    static let secondary = Color(light: 0x9E9E9E, dark: 0x8A8A90)
+    static let accent = Color(hex: 0xFF3B5C)
+    static let online = Color(hex: 0x34C759)
+    static let coin = Color(hex: 0xE8B21E)
+
+    static let separator = Color(light: 0xE6E6E0, dark: 0x33333A)
+
+    // MARK: Metrics
+
+    enum Metric {
+        static let card: CGFloat = 24
+        static let sheet: CGFloat = 28
+        static let gutter: CGFloat = 16
+        static let sheetOverlap: CGFloat = 24
+        /// Height reserved at the bottom of scroll views so the floating
+        /// tab bar never covers the last row.
+        static let tabBarClearance: CGFloat = 96
+    }
+}
+
+// MARK: - Typography
+
+extension Font {
+    /// The app voice: heavy, italic, rounded. Scales with Dynamic Type
+    /// because it is built from a text style rather than a fixed size.
+    static func click(_ style: Font.TextStyle, weight: Font.Weight = .bold) -> Font {
+        .system(style, design: .rounded).weight(weight).italic()
+    }
+
+    /// Non-italic variant for dense body copy, where italics hurt legibility.
+    static func clickPlain(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
+        .system(style, design: .rounded).weight(weight)
+    }
+}
+
+// MARK: - Shared modifiers
+
+extension View {
+    /// Standard white card surface.
+    func cardSurface(radius: CGFloat = Theme.Metric.card) -> some View {
+        background(Theme.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+    }
+
+    /// Leaves room for the floating tab bar at the bottom of a scroll view.
+    func tabBarClearance() -> some View {
+        safeAreaPadding(.bottom, Theme.Metric.tabBarClearance)
+    }
+}
