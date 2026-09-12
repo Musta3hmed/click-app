@@ -124,6 +124,21 @@ final class Match {
     }
 }
 
+/// A persisted swipe decision (MEGA-BRIEF 4.2). Session state meant the
+/// same 22 people returned on every cold launch; the deck now remembers.
+@Model
+final class SwipeDecision {
+    @Attribute(.unique) var profileID: UUID
+    var liked: Bool
+    var decidedAt: Date
+
+    init(profileID: UUID, liked: Bool, decidedAt: Date = .now) {
+        self.profileID = profileID
+        self.liked = liked
+        self.decidedAt = decidedAt
+    }
+}
+
 /// An outgoing like that has not been answered — surfaced honestly as
 /// "liked — no answer yet", never as a match.
 @Model

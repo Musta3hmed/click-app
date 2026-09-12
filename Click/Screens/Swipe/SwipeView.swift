@@ -37,11 +37,15 @@ struct SwipeView: View {
     @Query(sort: [SortDescriptor(\Community.sortIndex), SortDescriptor(\Community.createdAt)])
     private var allCommunities: [Community]
 
-    // MARK: Session state
+    // MARK: Swipe state
 
-    /// O(1) membership + explicit order (rewind needs the order).
-    @State private var swipedIDs: Set<UUID> = []
-    @State private var swipeOrder: [UUID] = []
+    /// Persisted decisions (MEGA-BRIEF 4.2) — session @State meant every
+    /// cold launch reset the deck and the same people returned forever.
+    @Query private var decisions: [SwipeDecision]
+
+    private var swipedIDs: Set<UUID> {
+        Set(decisions.map(\.profileID))
+    }
     /// Everything each swipe created, so rewind is N-deep and cleans up.
     @State private var rewindStack: [RewindEntry] = []
     /// Set for the swipe the deck is currently animating (opener/super
@@ -604,16 +608,16 @@ struct SwipeView: View {
 
             // One save at the end; the deck swap happens in a single
             // animations-disabled transaction.
-            try? context.save()
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                for profile in targets {
-                    swipedIDs.insert(profile.id)
-                    swipeOrder.append(profile.id)
+                let alreadySwiped = swipedIDs
+                for profile in targets where !alreadySwiped.contains(profile.id) {
+                    context.insert(SwipeDecision(profileID: profile.id, liked: true))
                 }
             }
-            rewindStack = []  // Undoing 100 rows isn't supported.
+            try? context.save()
+            rewindStack = []  // Undoing bulk rows isn't supported.
 
             bulkProgress = 1
             bulkSentCount = targets.count
@@ -705,9 +709,11 @@ struct SwipeView: View {
     /// Runs when the fly-off animation completes.
     private func finishSwipe(profile: UserProfile, liked: Bool) {
         withAnimation(motion.state) {
-            swipedIDs.insert(profile.id)
-            swipeOrder.append(profile.id)
+            if !swipedIDs.contains(profile.id) {
+                context.insert(SwipeDecision(profileID: profile.id, liked: liked))
+            }
         }
+        try? context.save()
         if let profile = celebrationPending {
             celebrationPending = nil
             withAnimation(motion.celebrate) {
@@ -722,8 +728,10 @@ struct SwipeView: View {
         guard let entry = rewindStack.popLast() else { return }
         Haptics.impact(.light)
         withAnimation(motion.state) {
-            swipedIDs.remove(entry.profileID)
-            swipeOrder.removeAll { $0 == entry.profileID }
+            let profileID = entry.profileID
+            for decision in decisions where decision.profileID == profileID {
+                context.delete(decision)
+            }
         }
         if let match = entry.match {
             context.delete(match)
@@ -744,9 +752,11 @@ struct SwipeView: View {
 
     private func reset() {
         withAnimation(motion.state) {
-            swipedIDs = []
-            swipeOrder = []
+            for decision in decisions {
+                context.delete(decision)
+            }
         }
+        try? context.save()
         rewindStack = []
     }
 

@@ -63,6 +63,30 @@ struct InterestTests {
         }
     }
 
+    /// The expanded deck (MEGA-BRIEF 4.2): ~120 unique, adult, canonical.
+    @Test func expandedDeckIsLargeUniqueAndValid() throws {
+        let context = try makeContext()
+        MockData.seedIfNeeded(context)
+
+        let candidates = try context.fetch(FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser }
+        ))
+        #expect(candidates.count >= 110, "The deck should be ~120, was \(candidates.count)")
+        #expect(Set(candidates.map(\.name)).count == candidates.count, "Names must be unique")
+        for profile in candidates {
+            #expect(profile.age >= 18, "\(profile.name) is under 18")
+            #expect(profile.gender != nil, "\(profile.name) has no gender - the seeking filter would hide them")
+            #expect(!profile.interests.isEmpty)
+        }
+
+        // Seeding again must not duplicate.
+        MockData.seedIfNeeded(context)
+        let second = try context.fetchCount(FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser }
+        ))
+        #expect(second == candidates.count)
+    }
+
     @Test func sharedInterestsAndScoreAgree() throws {
         let context = try makeContext()
         let viewer = UserProfile(name: "Me", age: 20, isCurrentUser: true)

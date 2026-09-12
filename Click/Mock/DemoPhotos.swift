@@ -39,8 +39,14 @@ enum DemoPhotos {
         )
         guard let profiles = try? context.fetch(descriptor) else { return }
 
+        // The deck is ~120 profiles now (MEGA-BRIEF 4.2): filling every
+        // empty profile in one pass would be hundreds of serial fetches.
+        // Fill a slice per launch; the deck accumulates photos over time
+        // and unfilled profiles keep their gradient cards.
+        let empty = profiles.filter { $0.photos.isEmpty }.prefix(24)
+
         var anySucceeded = false
-        for profile in profiles where profile.photos.isEmpty {
+        for profile in empty {
             let count = photoCount(for: profile.name)
             var added = 0
             for index in 0..<count {

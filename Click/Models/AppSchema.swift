@@ -21,6 +21,7 @@ enum AppSchema {
         BingoBoard.self,
         Community.self,
         CommunityMembership.self,
-        SentLike.self
+        SentLike.self,
+        SwipeDecision.self
     ]
 }

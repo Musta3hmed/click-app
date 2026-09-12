@@ -35,6 +35,9 @@ enum AccountEraser {
         for like in (try? context.fetch(FetchDescriptor<SentLike>())) ?? [] {
             context.delete(like)
         }
+        for decision in (try? context.fetch(FetchDescriptor<SwipeDecision>())) ?? [] {
+            context.delete(decision)
+        }
         for wallet in (try? context.fetch(FetchDescriptor<Wallet>())) ?? [] {
             context.delete(wallet)
         }
