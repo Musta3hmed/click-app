@@ -68,6 +68,11 @@ struct SwipeView: View {
     /// Community lens: session state, nil = everyone.
     @State private var lensCommunityID: String?
 
+    /// In-app pre-prompt after the FIRST match (never at launch) — a
+    /// "not now" here keeps the system-level ask available for later.
+    @AppStorage(DefaultsKey.notificationsPrimed) private var notificationsPrimed = false
+    @State private var showingNotificationPrompt = false
+
     // Bulk message flow
     @State private var showingBulkSheet = false
     @State private var bulkProgress: Double?
@@ -139,6 +144,14 @@ struct SwipeView: View {
                 sentCount: $bulkSentCount,
                 onConfirm: { performBulkSend() }
             )
+        }
+        .alert("Want to know when it clicks?", isPresented: $showingNotificationPrompt) {
+            Button("Turn on") {
+                Task { await NotificationService.requestAuthorization() }
+            }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("Click can tell you when a match or message is waiting. Never streaks, never marketing.")
         }
         .alert(
             "Hold on",
@@ -829,6 +842,10 @@ struct SwipeView: View {
                 onDismiss: {
                     withAnimation(motion.celebrateOut) {
                         celebrating = nil
+                    }
+                    if !notificationsPrimed {
+                        notificationsPrimed = true
+                        showingNotificationPrompt = true
                     }
                 }
             )

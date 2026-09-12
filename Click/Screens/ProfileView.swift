@@ -442,6 +442,10 @@ struct ProfileView: View {
         guard let me else { return }
         if Boost.activate(for: me, in: context) {
             Haptics.notify(.success)
+            // A real event that will really happen: the expiry.
+            if let until = me.boostedUntil {
+                NotificationService.scheduleBoostExpiry(at: until)
+            }
         } else {
             Haptics.notify(.error)
         }
@@ -563,6 +567,8 @@ struct ProfileView: View {
         try? context.save()
         coinEarnTrigger += 1
         Haptics.notify(.success)
+        // Tomorrow's reward is now a real thing that will be ready.
+        NotificationService.scheduleDailyRewardReady()
     }
 
     /// Named, non-random streak milestones (MEGA-BRIEF 4.3/4.4). Kept

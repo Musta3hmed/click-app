@@ -109,9 +109,16 @@ struct RootView: View {
             await DemoPhotos.seedIfNeeded(context)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
+            switch phase {
+            case .active:
                 Boost.foregroundTick(in: context)
                 checkReturnGap()
+                // They're here — a "you have unread" reminder is moot.
+                NotificationService.cancelUnreadDigest()
+            case .background:
+                scheduleUnreadDigestIfNeeded()
+            default:
+                break
             }
         }
         .overlay(alignment: .top) { returnBanner }
@@ -142,6 +149,17 @@ struct RootView: View {
 
     private var currentUserName: String {
         currentUsers.first { !$0.isDeleted }?.name ?? ""
+    }
+
+    /// Backgrounding with real unread messages from an identified sender
+    /// schedules ONE reminder (cancelled the moment they return).
+    private func scheduleUnreadDigestIfNeeded() {
+        let unread = ((try? context.fetch(FetchDescriptor<Conversation>())) ?? [])
+            .filter { $0.isVisible && $0.unreadCount > 0 && $0.participant?.isMuted != true }
+        guard let first = unread.max(by: { $0.lastActivity < $1.lastActivity }),
+              let sender = first.participant else { return }
+        let total = unread.reduce(0) { $0 + $1.unreadCount }
+        NotificationService.scheduleUnreadDigest(senderName: sender.name, unreadCount: total)
     }
 
     // MARK: - Welcome-back banner (MEGA-BRIEF 4.5)

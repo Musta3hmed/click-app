@@ -86,6 +86,13 @@ enum AccountEraser {
         defaults.removeObject(forKey: DefaultsKey.filterInterests)
         defaults.removeObject(forKey: DefaultsKey.filterInterestsMatchAll)
         defaults.removeObject(forKey: DefaultsKey.lastActiveAt)
+        defaults.removeObject(forKey: DefaultsKey.notificationsPrimed)
+        defaults.removeObject(forKey: DefaultsKey.notifyMessages)
+        defaults.removeObject(forKey: DefaultsKey.notifyDailyReward)
+        defaults.removeObject(forKey: DefaultsKey.notifyBoost)
+        defaults.removeObject(forKey: DefaultsKey.notifyEvents)
+        // Nothing scheduled for this account may fire for the next one.
+        NotificationService.cancelAll()
         // DefaultsKey.appearance stays — it is a device preference.
     }
 }

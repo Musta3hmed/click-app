@@ -48,4 +48,12 @@ enum DefaultsKey {
     /// Last foreground timestamp for the welcome-back banner (account-
     /// scoped; AccountEraser clears it).
     static let lastActiveAt = "lastActiveAt"
+
+    // Notification preferences (account-scoped; AccountEraser clears
+    // them and cancels everything pending).
+    static let notificationsPrimed = "notificationsPrimed"
+    static let notifyMessages = "notifyMessages"
+    static let notifyDailyReward = "notifyDailyReward"
+    static let notifyBoost = "notifyBoost"
+    static let notifyEvents = "notifyEvents"
 }
