@@ -23,6 +23,7 @@ struct EditProfileView: View {
     @State private var gender: Gender?
     @State private var seeking: Set<SeekingPreference> = []
     @State private var interests: [String] = []
+    @State private var prompts: [PromptAnswer] = []
     @State private var hydrated = false
     @State private var showingPreview = false
 
@@ -39,6 +40,7 @@ struct EditProfileView: View {
                         genderSection
                         seekingSection
                         interestsSection
+                        promptsSection
                         locationSection(me)
                         previewSection
                     }
@@ -157,6 +159,78 @@ struct EditProfileView: View {
         }
     }
 
+    private var promptsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("prompts")
+            Text("answer up to \(PromptCatalog.maxAnswered) — they show on your card.")
+                .font(.clickPlain(.footnote, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+
+            ForEach($prompts) { $entry in
+                promptRow($entry)
+            }
+
+            if prompts.count < PromptCatalog.maxAnswered {
+                Menu {
+                    ForEach(unansweredPrompts) { prompt in
+                        Button(prompt.question) {
+                            prompts.append(PromptAnswer(promptID: prompt.id, answer: ""))
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("add a prompt")
+                            .font(.click(.subheadline, weight: .heavy))
+                    }
+                    .foregroundStyle(Theme.brandPink)
+                    .padding(.vertical, 8)
+                }
+                .accessibilityLabel("Add a prompt")
+            }
+        }
+    }
+
+    private func promptRow(_ entry: Binding<PromptAnswer>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(entry.wrappedValue.prompt?.question ?? entry.wrappedValue.promptID)
+                    .font(.click(.subheadline, weight: .heavy))
+                    .foregroundStyle(Theme.primary)
+                Spacer()
+                Button {
+                    prompts.removeAll { $0.promptID == entry.wrappedValue.promptID }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.clickQuiet)
+                .accessibilityLabel("Remove prompt \(entry.wrappedValue.prompt?.question ?? "")")
+            }
+
+            TextField("your answer", text: entry.answer, axis: .vertical)
+                .lineLimit(1...3)
+                .font(.clickPlain(.body, weight: .medium))
+                .foregroundStyle(Theme.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
+                .accessibilityLabel("Answer to \(entry.wrappedValue.prompt?.question ?? "prompt")")
+                .onChange(of: entry.wrappedValue.answer) { _, newValue in
+                    if newValue.count > PromptCatalog.maxAnswerLength {
+                        entry.wrappedValue.answer = String(newValue.prefix(PromptCatalog.maxAnswerLength))
+                    }
+                }
+        }
+    }
+
+    private var unansweredPrompts: [Prompt] {
+        let used = Set(prompts.map(\.promptID))
+        return PromptCatalog.all.filter { !used.contains($0.id) }
+    }
+
     private func locationSection(_ me: UserProfile) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader("location")
@@ -197,6 +271,7 @@ struct EditProfileView: View {
         gender = me.gender
         seeking = Set(me.seeking)
         interests = me.interests
+        prompts = me.promptAnswers
     }
 
     /// Staged — lands on "done" with everything else. No manual haptic:
@@ -221,6 +296,7 @@ struct EditProfileView: View {
             me.gender = gender
             me.seeking = Array(seeking)
             me.interests = interests
+            me.promptAnswers = prompts  // The setter validates and caps.
             try? context.save()
         }
         Haptics.notify(.success)

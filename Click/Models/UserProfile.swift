@@ -25,6 +25,11 @@ final class UserProfile {
     /// lightweight migration from phase-3 stores succeeds.
     var boostedUntil: Date? = nil
 
+    /// JSON-encoded [PromptAnswer] (see PromptCatalog). Data with a
+    /// declared default keeps lightweight migration from phase-4 stores
+    /// working; read/write through the `promptAnswers` accessor.
+    var promptsData: Data = Data()
+
     /// For the current-user row: the AuthResult.providerUserID that owns it.
     /// Onboarding refuses to reuse a row whose owner doesn't match the
     /// signed-in credential — the backstop against inheriting a previous

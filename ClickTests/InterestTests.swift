@@ -97,6 +97,45 @@ struct InterestTests {
         #expect(scored.first?.name == "B", "Shared interests sort first")
     }
 
+    @Test func promptCodecRoundTripsAndValidates() throws {
+        let profile = UserProfile(name: "Me", age: 20)
+        profile.promptAnswers = [
+            PromptAnswer(promptID: "perfect-sunday", answer: "  coffee\nand quiet  "),
+            PromptAnswer(promptID: "not-a-real-prompt", answer: "dropped"),
+            PromptAnswer(promptID: "two-truths", answer: ""),
+            PromptAnswer(promptID: "dream-trip", answer: String(repeating: "x", count: 300)),
+            PromptAnswer(promptID: "green-flags", answer: "kind to waiters"),
+            PromptAnswer(promptID: "best-meal", answer: "over the cap of three"),
+        ]
+
+        let decoded = profile.promptAnswers
+        #expect(decoded.count == PromptCatalog.maxAnswered, "Capped at 3")
+        #expect(decoded[0].answer == "coffee and quiet", "Newlines flattened, trimmed")
+        #expect(decoded.allSatisfy { PromptCatalog.byID[$0.promptID] != nil }, "Unknown prompt ids dropped")
+        #expect(decoded.allSatisfy { $0.answer.count <= PromptCatalog.maxAnswerLength })
+        #expect(!decoded.contains { $0.promptID == "two-truths" }, "Empty answers dropped")
+    }
+
+    @Test func promptCatalogueIDsAreUnique() {
+        let ids = PromptCatalog.all.map(\.id)
+        #expect(Set(ids).count == ids.count)
+    }
+
+    @Test func seededPromptsAreValid() throws {
+        let context = try makeContext()
+        MockData.seedIfNeeded(context)
+
+        let all = try context.fetch(FetchDescriptor<UserProfile>())
+        let withPrompts = all.filter { !$0.promptAnswers.isEmpty }
+        #expect(withPrompts.count >= 5, "A spread of the deck should carry prompts")
+        for profile in withPrompts {
+            for entry in profile.promptAnswers {
+                #expect(PromptCatalog.byID[entry.promptID] != nil)
+                #expect(entry.answer.count <= PromptCatalog.maxAnswerLength)
+            }
+        }
+    }
+
     @Test func interestFilterSupportsAnyAndAll() {
         let a = UserProfile(name: "A", age: 21)
         a.interests = ["coffee", "films"]

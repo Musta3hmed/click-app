@@ -153,6 +153,21 @@ struct SwipeCard: View {
                 .foregroundStyle(Theme.onImageSecondary)
                 .lineLimit(2)
 
+            // The first answered prompt — identity the bio alone can't
+            // carry. One on the card keeps it readable; the rest show in
+            // the profile preview/editor.
+            if let entry = profile.promptAnswers.first, let prompt = entry.prompt {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(prompt.question)
+                        .font(.clickPlain(.caption2, weight: .bold))
+                        .foregroundStyle(Theme.onImageSecondary)
+                    Text(entry.answer)
+                        .font(.clickPlain(.footnote, weight: .semibold))
+                        .foregroundStyle(Theme.onImagePrimary)
+                        .lineLimit(2)
+                }
+            }
+
             if let line = InterestMatching.sharedLine(viewer, profile) {
                 Text(line)
                     .font(.clickPlain(.caption, weight: .bold))
@@ -203,6 +218,9 @@ struct SwipeCard: View {
     private var cardAccessibilityLabel: String {
         var label = "\(profile.name), \(profile.displayAge). \(profile.bio). "
         if profile.isVerified { label += "Verified. " }
+        if let entry = profile.promptAnswers.first, let prompt = entry.prompt {
+            label += "\(prompt.question): \(entry.answer). "
+        }
         let sharedLabels = InterestMatching.shared(viewer, profile).map(\.label)
         if !sharedLabels.isEmpty {
             label += "\(sharedLabels.count) shared interest\(sharedLabels.count == 1 ? "" : "s"): \(sharedLabels.joined(separator: ", ")). "

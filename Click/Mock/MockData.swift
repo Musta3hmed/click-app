@@ -130,7 +130,7 @@ enum MockData {
 
         let base = Date.now
         return seeds.enumerated().map { index, seed in
-            UserProfile(
+            let profile = UserProfile(
                 name: seed.0,
                 age: seed.1,
                 bio: seed.2,
@@ -142,8 +142,45 @@ enum MockData {
                 gender: seed.7,
                 createdAt: base.addingTimeInterval(Double(index) * 0.01)
             )
+            if let answers = seedPrompts[seed.0] {
+                profile.promptAnswers = answers
+            }
+            return profile
         }
     }
+
+    /// Prompt answers for a spread of seeded candidates, keyed by name so
+    /// the tuple array above stays readable. Roughly a third of the deck
+    /// has them — enough to make the surface feel real without every card
+    /// reading identically.
+    private static let seedPrompts: [String: [PromptAnswer]] = [
+        "Maya Chen": [
+            PromptAnswer(promptID: "perfect-sunday", answer: "flat white, gallery, absolutely no plans after 2pm"),
+        ],
+        "Priya Raman": [
+            PromptAnswer(promptID: "hill-to-die-on", answer: "the book is not always better than the film"),
+            PromptAnswer(promptID: "talk-for-hours", answer: "why every thriller falls apart in act three"),
+        ],
+        "Kai Tanaka": [
+            PromptAnswer(promptID: "song-on-repeat", answer: "whatever I made at 3am and will disown by friday"),
+        ],
+        "Amara Okafor": [
+            PromptAnswer(promptID: "simple-pleasures", answer: "repotting day, dog videos, the first cup of tea"),
+        ],
+        "Diego Herrera": [
+            PromptAnswer(promptID: "first-round", answer: "you can name three salsa moves without googling"),
+        ],
+        "Chloe Dubois": [
+            PromptAnswer(promptID: "way-to-my-heart", answer: "warm bread. that's it, that's the answer"),
+            PromptAnswer(promptID: "two-truths", answer: "I've met three prime ministers, one owes me cake"),
+        ],
+        "Zoe Kelly": [
+            PromptAnswer(promptID: "perfect-sunday", answer: "dawn surf check, then whatever the ocean decides"),
+        ],
+        "Yusuf Demir": [
+            PromptAnswer(promptID: "weirdly-good-at", answer: "ending chess games in exactly eleven moves"),
+        ],
+    ]
 
     // MARK: - Conversations
 
