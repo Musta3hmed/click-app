@@ -308,6 +308,12 @@ struct BingoView: View {
                 // ensure(_:in:) — a missing inventory row must never eat a
                 // reward the user just paid for.
                 BoosterInventory.ensure(kind, in: context).count += 1
+            case .cosmetic(let id):
+                // The bingo pool never contains cosmetics (they are
+                // event-wheel rewards), but the shared codec allows it.
+                if !wallet.ownedCosmetics.contains(id) {
+                    wallet.ownedCosmetics.append(id)
+                }
             case nil:
                 break
             }
@@ -384,6 +390,10 @@ private struct BingoTile: View {
                     Image(systemName: kind.systemImage)
                         .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(kind.tint)
+                case .cosmetic(let id):
+                    Image(systemName: CosmeticCatalog.byID[id]?.symbolName ?? "gift.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(CosmeticCatalog.tint(id))
                 case nil:
                     EmptyView()
                 }
