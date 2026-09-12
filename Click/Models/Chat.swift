@@ -13,6 +13,10 @@ final class Conversation {
     var folderRaw: String
     var lastActivity: Date
     var unreadCount: Int
+    /// Super-like request flags. Declared defaults keep lightweight
+    /// migration from phase-3 stores working.
+    var isSuperLike: Bool = false
+    var requestStateRaw: String = RequestState.none.rawValue
 
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
@@ -23,6 +27,8 @@ final class Conversation {
         folder: ChatFolder = .messages,
         lastActivity: Date = .now,
         unreadCount: Int = 0,
+        isSuperLike: Bool = false,
+        requestState: RequestState = .none,
         messages: [Message] = []
     ) {
         self.id = id
@@ -30,12 +36,31 @@ final class Conversation {
         self.folderRaw = folder.rawValue
         self.lastActivity = lastActivity
         self.unreadCount = unreadCount
+        self.isSuperLike = isSuperLike
+        self.requestStateRaw = requestState.rawValue
         self.messages = messages
     }
 
     var folder: ChatFolder {
         get { ChatFolder(rawValue: folderRaw) ?? .messages }
         set { folderRaw = newValue.rawValue }
+    }
+
+    var requestState: RequestState {
+        get { RequestState(rawValue: requestStateRaw) ?? .none }
+        set { requestStateRaw = newValue.rawValue }
+    }
+
+    /// Legacy phase-3 `.requests` rows predate request states; an
+    /// incoming-only row with state `none` is treated as pending so old
+    /// data gets the accept/deny flow too.
+    var isPendingRequest: Bool {
+        guard folder == .requests else { return false }
+        switch requestState {
+        case .pending: return true
+        case .none: return !messages.contains { $0.isFromMe }
+        case .accepted, .denied: return false
+        }
     }
 
     var sortedMessages: [Message] {

@@ -45,8 +45,8 @@ struct OnboardingView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthSession.self) private var auth
 
-    @AppStorage("onboardingStep") private var storedStep = 0
-    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    @AppStorage(DefaultsKey.onboardingStep) private var storedStep = 0
+    @AppStorage(DefaultsKey.onboardingCompleted) private var onboardingCompleted = false
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -60,6 +60,9 @@ struct OnboardingView: View {
     @State private var seeking: Set<SeekingPreference> = []
     @State private var hydrated = false
     @State private var saveErrorMessage: String?
+    /// Direction of the last step change, so the wizard pushes forward
+    /// and slides back instead of hard-cutting.
+    @State private var movingForward = true
 
     private var step: OnboardingStep {
         OnboardingStep(rawValue: storedStep.clamped(to: 0...(OnboardingStep.allCases.count - 1))) ?? .name
@@ -74,6 +77,9 @@ struct OnboardingView: View {
             // Scrolls so large Dynamic Type can never push content (or the
             // wheel) out of reach; Continue stays pinned below.
             ScrollView {
+                // One identity per step: title and body move TOGETHER as a
+                // directional push (the header used to hard-cut while the
+                // body faded).
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(step.title)
@@ -85,7 +91,6 @@ struct OnboardingView: View {
                             .foregroundStyle(Theme.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(nil, value: storedStep)
 
                     stepBody
                         .frame(maxWidth: .infinity)
@@ -93,6 +98,8 @@ struct OnboardingView: View {
                 .padding(.horizontal, Theme.Metric.gutter)
                 .padding(.top, 24)
                 .padding(.bottom, 12)
+                .id(step)
+                .transition(.push(from: movingForward ? .trailing : .leading))
             }
             .scrollDismissesKeyboard(.interactively)
 
@@ -133,6 +140,9 @@ struct OnboardingView: View {
 
             ProgressView(value: Double(storedStep + 1), total: Double(OnboardingStep.allCases.count))
                 .tint(Theme.brandPink)
+                // Ease-out, never a spring: a progress bar that overshoots
+                // and comes back reads as going backwards.
+                .animation(Theme.Motion.celebrateOut, value: storedStep)
                 .accessibilityLabel("Step \(storedStep + 1) of \(OnboardingStep.allCases.count)")
 
             // The exit that was missing: without it, an under-18 user or a
@@ -188,9 +198,10 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.onPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(canContinue ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.separator), in: Capsule())
+                // Plain Color is animatable; AnyShapeStyle erasure wasn't.
+                .background(canContinue ? Theme.primary : Theme.fillDisabled, in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.click)
         .disabled(!canContinue)
         .accessibilityLabel(step == .location ? "Finish onboarding" : "Continue")
     }
@@ -275,6 +286,7 @@ struct OnboardingView: View {
         case .birthDate:
             profile.birthDate = birthDate
             profile.age = UserProfile.age(from: birthDate)
+            profile.zodiac = Zodiac.from(birthDate: birthDate)
         case .gender:
             profile.gender = gender
         case .seeking:
@@ -294,10 +306,16 @@ struct OnboardingView: View {
 
         if step == .location {
             onboardingCompleted = true
-            storedStep = 0
             Haptics.notify(.success)
+            // Reset AFTER the completion cross-fade — resetting immediately
+            // made the user watch step 1 flash back in as onboarding faded.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.5))
+                storedStep = 0
+            }
         } else {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            movingForward = true
+            withAnimation(Theme.Motion.screen) {
                 storedStep += 1
             }
         }
@@ -306,7 +324,8 @@ struct OnboardingView: View {
     private func goBack() {
         guard step != .name else { return }
         Haptics.selection()
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        movingForward = false
+        withAnimation(Theme.Motion.screen) {
             storedStep -= 1
         }
     }
@@ -342,7 +361,12 @@ private struct NameStep: View {
                 .foregroundStyle(Theme.secondary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .onAppear { focused = true }
+        // Deferred so the keyboard slide stops colliding with the step
+        // transition.
+        .task {
+            try? await Task.sleep(for: .seconds(0.36))
+            focused = true
+        }
         .onChange(of: name) { _, newValue in
             if newValue.count > 30 { name = String(newValue.prefix(30)) }
         }
@@ -408,7 +432,7 @@ private struct BirthDateStep: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showingRejection)
+        .animation(Theme.Motion.screenFade, value: showingRejection)
         .onAppear {
             // Resuming the step with a stored under-18 date lands on the
             // terminal card, not a live picker.
@@ -457,7 +481,7 @@ private struct BirthDateStep: View {
 
 // MARK: - Step 3: gender
 
-private struct GenderStep: View {
+struct GenderStep: View {
     @Binding var selection: Gender?
 
     var body: some View {
@@ -477,7 +501,7 @@ private struct GenderStep: View {
 
 // MARK: - Step 4: seeking (multi-select)
 
-private struct SeekingStep: View {
+struct SeekingStep: View {
     @Binding var selection: Set<SeekingPreference>
 
     var body: some View {
@@ -509,14 +533,14 @@ private struct SeekingStep: View {
 
 // MARK: - Shared choice row
 
-private struct ChoiceRow: View {
+struct ChoiceRow: View {
     let label: String
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button {
-            Haptics.selection()
+            // Haptic comes from the .click style — no double-fire.
             action()
         } label: {
             HStack {
@@ -527,15 +551,16 @@ private struct ChoiceRow: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(isSelected ? Theme.onPrimary : Theme.secondary)
+                    .contentTransition(.symbolEffect(.replace))
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
             .background(
-                isSelected ? AnyShapeStyle(Theme.primary) : AnyShapeStyle(Theme.surface),
+                isSelected ? Theme.primary : Theme.surface,
                 in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.click)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }

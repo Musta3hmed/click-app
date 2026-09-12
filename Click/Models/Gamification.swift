@@ -60,6 +60,21 @@ final class Wallet {
     /// Consecutive-day claim streak. A skipped day resets it.
     var currentStreak: Int = 0
     var lastClaimAt: Date?
+    /// Simulated profile-view counter (fed faster while boosted).
+    var profileViews: Int = 0
+    /// Bulk message rate limit: at most one send per 24h.
+    var lastBulkSendAt: Date? = nil
+    /// Free super likes per day (allowance set by the subscription tier);
+    /// after that they cost a booster.
+    var lastFreeSuperLikeAt: Date? = nil
+    var freeSuperLikesUsedToday: Int = 0
+    /// Simulated subscription (no real billing). Declared default keeps
+    /// lightweight migration working.
+    var subscriptionTierRaw: String = SubscriptionTier.free.rawValue
+    /// Simulated recurring benefits: monthly coin bonus (plus/gold) and
+    /// the weekly free boost (gold).
+    var lastMonthlyBonusAt: Date? = nil
+    var lastWeeklyBoostAt: Date? = nil
 
     init(id: String = "primary", coins: Int = 0) {
         self.id = id
@@ -67,6 +82,15 @@ final class Wallet {
         self.referralCodeUsed = nil
         self.currentStreak = 0
         self.lastClaimAt = nil
+    }
+
+    /// Day-1 economy unlock: without this the balance starts at 0, both
+    /// sinks cost 25 and day-1 income is 5 — nothing is affordable.
+    static let welcomeBonus = 50
+
+    var subscriptionTier: SubscriptionTier {
+        get { SubscriptionTier(rawValue: subscriptionTierRaw) ?? .free }
+        set { subscriptionTierRaw = newValue.rawValue }
     }
 
     /// The single fetch-or-create path. Always goes through a fresh fetch —
@@ -77,7 +101,7 @@ final class Wallet {
         if let existing = try? context.fetch(FetchDescriptor<Wallet>()).first {
             return existing
         }
-        let fresh = Wallet()
+        let fresh = Wallet(coins: welcomeBonus)
         context.insert(fresh)
         try? context.save()
         return fresh

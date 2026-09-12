@@ -20,6 +20,7 @@ final class SafetyMenuUITests: XCTestCase {
             "--uitest-signed-in",
             "--uitest-photos",
             "-onboardingCompleted", "YES",
+            "-phoneVerified", "YES",
             "-welcomePopupShown", "YES"
         ]
         app.launch()
@@ -45,7 +46,7 @@ final class SafetyMenuUITests: XCTestCase {
         menuButton.tap()
 
         XCTAssertTrue(
-            app.buttons["Report"].waitForExistence(timeout: 5),
+            app.buttons["report"].waitForExistence(timeout: 5),
             "Tapping the ellipsis on a multi-photo card must open the safety menu, not page the photo"
         )
     }

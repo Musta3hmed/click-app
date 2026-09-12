@@ -119,7 +119,9 @@ struct ReportSheet: View {
                     .disabled(selectedReason == nil)
                 }
             }
-            .navigationTitle("Report")
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
+            .navigationTitle("report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -144,8 +146,9 @@ struct SafetyMenu: View {
             Button {
                 SafetyCenter.toggleMute(profile, in: context)
             } label: {
+                // Lowercase: Click draws this menu (casing rule).
                 Label(
-                    profile.isMuted ? "Unmute" : "Mute",
+                    profile.isMuted ? "unmute" : "mute",
                     systemImage: profile.isMuted ? "bell.fill" : "bell.slash.fill"
                 )
             }
@@ -153,13 +156,13 @@ struct SafetyMenu: View {
             Button {
                 showingReport = true
             } label: {
-                Label("Report", systemImage: "flag.fill")
+                Label("report", systemImage: "flag.fill")
             }
 
             Button(role: .destructive) {
                 confirmingBlock = true
             } label: {
-                Label("Block", systemImage: "hand.raised.fill")
+                Label("block", systemImage: "hand.raised.fill")
             }
         } label: {
             Image(systemName: "ellipsis")

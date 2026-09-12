@@ -2,8 +2,11 @@
 //  ConfettiView.swift
 //  Click
 //
-//  Lightweight particle burst for the match celebration. Pure Canvas —
-//  positions are functions of elapsed time, no per-frame state.
+//  Lightweight particle burst for the celebrations. Pure Canvas —
+//  positions are functions of elapsed time, no per-frame state. 54
+//  particles in three parallax depth bands (near/mid/far), one shared
+//  unit path scaled per particle, a static palette, asynchronous
+//  rendering, and a keyframed opacity ramp (120ms in, 600ms out).
 //
 
 import SwiftUI
@@ -24,22 +27,38 @@ struct ConfettiView: View {
         let hueIndex: Int
         let size: CGFloat
         let delay: Double
+        /// 0 far, 1 mid, 2 near — scales size/speed for parallax depth.
+        let band: Int
     }
 
     private static let particles: [Particle] = {
         var generator = SeededRandom(seed: 0xC11C)
-        return (0..<90).map { _ in
-            Particle(
+        return (0..<54).map { index in
+            let band = index % 3
+            let depth = 0.6 + CGFloat(band) * 0.35   // far small+slow, near big+fast
+            return Particle(
                 originX: CGFloat(generator.next()),
-                velocityY: 140 + CGFloat(generator.next()) * 220,
+                velocityY: (140 + CGFloat(generator.next()) * 220) * depth,
                 driftX: (CGFloat(generator.next()) - 0.5) * 120,
                 spinSpeed: 2 + generator.next() * 6,
                 hueIndex: Int(generator.next() * 100),
-                size: 6 + CGFloat(generator.next()) * 6,
-                delay: generator.next() * 0.7
+                size: (6 + CGFloat(generator.next()) * 6) * depth,
+                delay: generator.next() * 0.7,
+                band: band
             )
         }
     }()
+
+    /// Static — allocating this per frame was measurable.
+    private static let palette: [Color] = [
+        Theme.brandOrange, Theme.brandPink, Theme.brandGold,
+        Theme.brandViolet, Theme.online, .white
+    ]
+
+    /// One unit path, scaled per particle instead of re-built 54 times a
+    /// frame.
+    private static let unitPath = RoundedRectangle(cornerRadius: 0.2)
+        .path(in: CGRect(x: -0.5, y: -0.3, width: 1, height: 0.6))
 
     /// Flips once the burst finishes so the display link stops instead of
     /// invoking an empty Canvas every frame for as long as the overlay lives.
@@ -47,14 +66,15 @@ struct ConfettiView: View {
 
     var body: some View {
         TimelineView(.animation(paused: finished)) { timeline in
-            Canvas { context, size in
+            Canvas(rendersAsynchronously: true) { context, size in
                 let elapsed = timeline.date.timeIntervalSince(startDate)
                 guard elapsed < duration else { return }
 
-                let palette: [Color] = [
-                    Theme.brandOrange, Theme.brandPink, Theme.brandGold,
-                    Theme.brandViolet, Theme.online, .white
-                ]
+                // Keyframed global ramp: 120ms fade-in, 600ms fade-out —
+                // no more snap to a linear ramp half a second early.
+                let fadeIn = min(1, elapsed / 0.12)
+                let fadeOut = min(1, max(0, (duration - elapsed) / 0.6))
+                let globalFade = fadeIn * fadeOut
 
                 for particle in Self.particles {
                     let t = elapsed - particle.delay
@@ -64,21 +84,13 @@ struct ConfettiView: View {
                     let x = particle.originX * size.width + particle.driftX * CGFloat(sin(t * 2))
                     guard y < size.height + 20 else { continue }
 
-                    let fade = min(1, max(0, (duration - elapsed) / 0.5))
-                    let rect = CGRect(
-                        x: x - particle.size / 2,
-                        y: y - particle.size / 2,
-                        width: particle.size,
-                        height: particle.size * 0.6
-                    )
-
                     var ctx = context
-                    ctx.translateBy(x: rect.midX, y: rect.midY)
+                    ctx.translateBy(x: x, y: y)
                     ctx.rotate(by: .radians(t * particle.spinSpeed))
-                    ctx.translateBy(x: -rect.midX, y: -rect.midY)
+                    ctx.scaleBy(x: particle.size, y: particle.size)
                     ctx.fill(
-                        RoundedRectangle(cornerRadius: 2).path(in: rect),
-                        with: .color(palette[particle.hueIndex % palette.count].opacity(fade))
+                        Self.unitPath,
+                        with: .color(Self.palette[particle.hueIndex % Self.palette.count].opacity(globalFade))
                     )
                 }
             }
