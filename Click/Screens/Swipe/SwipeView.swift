@@ -34,6 +34,9 @@ struct SwipeView: View {
 
     @Query private var conversations: [Conversation]
 
+    @Query(sort: [SortDescriptor(\Community.sortIndex), SortDescriptor(\Community.createdAt)])
+    private var allCommunities: [Community]
+
     // MARK: Session state
 
     /// O(1) membership + explicit order (rewind needs the order).
@@ -56,6 +59,8 @@ struct SwipeView: View {
     @State private var celebrationPending: UserProfile?
     @State private var showingFilters = false
     @State private var alertMessage: String?
+    /// Community lens: session state, nil = everyone.
+    @State private var lensCommunityID: String?
 
     // Bulk message flow
     @State private var showingBulkSheet = false
@@ -82,9 +87,13 @@ struct SwipeView: View {
                     if filtersFellBack {
                         fallbackBanner
                     }
+                    if lensFellBack, let lensCommunity {
+                        lensFallbackBanner(lensCommunity)
+                    }
                     CardDeck(
                         cards: Array(remaining.prefix(3)),
                         viewer: me,
+                        reportSurface: lensCommunity.map { "deck lens:\($0.id)" } ?? "deck",
                         isBusy: $deckBusy,
                         command: $deckCommand,
                         onCommitStart: { profile, liked in
@@ -147,6 +156,37 @@ struct SwipeView: View {
                     BoostBadge(until: until)
                 }
 
+                // Community lens beside filters — only once there is a
+                // community to switch into.
+                if !myCommunities.isEmpty {
+                    Menu {
+                        Button {
+                            lensCommunityID = nil
+                        } label: {
+                            Label("everyone", systemImage: lensCommunityID == nil ? "checkmark" : "person.2.fill")
+                        }
+                        ForEach(myCommunities) { community in
+                            Button {
+                                lensCommunityID = community.id
+                            } label: {
+                                Label(community.name, systemImage: lensCommunityID == community.id ? "checkmark" : community.symbolName)
+                            }
+                        }
+                    } label: {
+                        GlassCapsule {
+                            Image(systemName: lensCommunity?.symbolName ?? "person.3.fill")
+                                .foregroundStyle(.white)
+                            Text(lensCommunity?.name ?? "everyone")
+                                .font(.click(.footnote, weight: .heavy))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                        }
+                    }
+                    .accessibilityLabel("Community lens")
+                    .accessibilityValue(lensCommunity?.name ?? "everyone")
+                    .accessibilityHint("Switches the deck to one of your communities")
+                }
+
                 Button {
                     showingFilters = true
                 } label: {
@@ -197,9 +237,37 @@ struct SwipeView: View {
         filtersFellBack ? seekingDeck : filteredDeck
     }
 
+    // MARK: Community lens
+    // Filters the same non-blocked candidate set the deck already uses,
+    // so block stays transitive by construction.
+
+    private var myCommunities: [Community] {
+        guard let me else { return [] }
+        let joined = Set(me.memberships.map(\.communityID))
+        return allCommunities.filter { joined.contains($0.id) && $0.state == .approved }
+    }
+
+    private var lensCommunity: Community? {
+        guard let lensCommunityID else { return nil }
+        return myCommunities.first { $0.id == lensCommunityID }
+    }
+
+    private var lensedDeck: [UserProfile] {
+        guard let lensCommunity else { return deck }
+        return deck.filter { profile in
+            profile.memberships.contains { $0.communityID == lensCommunity.id }
+        }
+    }
+
+    /// A lens is even easier to empty than a filter — same fallback rule.
+    private var lensFellBack: Bool {
+        lensCommunity != nil && lensedDeck.isEmpty && !deck.isEmpty
+    }
+
     /// Scored by shared interests (reorders, never removes).
     private var remaining: [UserProfile] {
-        DeckFilter.scored(deck.filter { !swipedIDs.contains($0.id) }, viewer: me)
+        let pool = lensFellBack ? deck : lensedDeck
+        return DeckFilter.scored(pool.filter { !swipedIDs.contains($0.id) }, viewer: me)
     }
 
     /// Persistent, honest, and actionable — never a silent empty state.
@@ -222,6 +290,33 @@ struct SwipeView: View {
             }
             .buttonStyle(.clickQuiet)
             .accessibilityLabel("Change filters")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .cardSurface(radius: Theme.Metric.control)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func lensFallbackBanner(_ community: Community) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: community.symbolName)
+                .foregroundStyle(CommunityService.tint(community.tintToken))
+                .accessibilityHidden(true)
+            Text("no one in \(community.name) right now — showing everyone")
+                .font(.clickPlain(.footnote, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button {
+                lensCommunityID = nil
+            } label: {
+                Text("turn off")
+                    .font(.click(.footnote, weight: .heavy))
+                    .foregroundStyle(Theme.primary)
+            }
+            .buttonStyle(.clickQuiet)
+            .accessibilityLabel("Turn off the community lens")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

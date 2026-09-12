@@ -35,4 +35,9 @@ enum DefaultsKey {
     /// metadata, not account data — AccountEraser leaves it alone (a
     /// fresh account on the same install is already migrated).
     static let interestsSchemaVersion = "interestsSchemaVersion"
+
+    // Community join rate limit (account-scoped; AccountEraser clears
+    // them via CommunityService.eraseUserCreated).
+    static let communityJoinsDay = "communityJoinsDay"
+    static let communityJoinsCount = "communityJoinsCount"
 }

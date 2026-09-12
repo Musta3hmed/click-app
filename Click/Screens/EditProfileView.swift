@@ -26,6 +26,7 @@ struct EditProfileView: View {
     @State private var prompts: [PromptAnswer] = []
     @State private var hydrated = false
     @State private var showingPreview = false
+    @State private var showingCommunities = false
 
     private var me: UserProfile? { currentUsers.first { !$0.isDeleted } }
 
@@ -40,6 +41,7 @@ struct EditProfileView: View {
                         genderSection
                         seekingSection
                         interestsSection
+                        communitiesSection(me)
                         promptsSection
                         locationSection(me)
                         previewSection
@@ -76,6 +78,9 @@ struct EditProfileView: View {
             if let me {
                 ProfileCardPreview(profile: me)
             }
+        }
+        .sheet(isPresented: $showingCommunities) {
+            CommunitiesView()
         }
     }
 
@@ -156,6 +161,33 @@ struct EditProfileView: View {
                 limit: InterestCatalog.maxSelected,
                 toggle: toggleInterest(_:)
             )
+        }
+    }
+
+    private func communitiesSection(_ me: UserProfile) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("communities")
+            Text(me.memberships.isEmpty
+                 ? "join a community to swipe through its people."
+                 : "you're in \(me.memberships.count) of \(CommunityService.joinCap).")
+                .font(.clickPlain(.footnote, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+            Button {
+                showingCommunities = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("browse communities")
+                        .font(.click(.subheadline, weight: .heavy))
+                }
+                .foregroundStyle(Theme.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Theme.surface, in: Capsule())
+            }
+            .buttonStyle(.clickQuiet)
+            .accessibilityLabel("Browse communities")
         }
     }
 

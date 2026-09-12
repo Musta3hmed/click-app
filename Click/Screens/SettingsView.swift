@@ -167,6 +167,15 @@ struct SettingsView: View {
             Button("guidelines") { legalDocument = .guidelines }
                 .foregroundStyle(Theme.primary)
 
+            // The review queue for user-created communities. Local-only
+            // moderation until a backend exists — the panel says so.
+            NavigationLink {
+                CommunityAdminView()
+            } label: {
+                Text("community moderation")
+                    .foregroundStyle(Theme.primary)
+            }
+
             Button("write a review") {
                 // App Store write-review deep link (placeholder id until
                 // the app is listed).

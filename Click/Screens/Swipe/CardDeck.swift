@@ -20,6 +20,8 @@ struct CardDeck: View {
     let cards: [UserProfile]
     /// The viewer's own profile — shared-interest chips need both sides.
     let viewer: UserProfile?
+    /// Report context, forwarded to every card's safety menu.
+    var reportSurface: String = "deck"
     @Binding var isBusy: Bool
     @Binding var command: DeckCommand?
     let onCommitStart: (UserProfile, Bool) -> Void
@@ -98,7 +100,7 @@ struct CardDeck: View {
     @ViewBuilder
     private func deckCard(profile: UserProfile, offset: Int) -> some View {
         if offset == 0 {
-            SwipeCard(profile: profile, viewer: viewer)
+            SwipeCard(profile: profile, viewer: viewer, reportSurface: reportSurface)
                 // Slight physical tilt with the drag.
                 .rotation3DEffect(
                     .degrees(Double(drag.width / 180).clamped(to: -2...2)),
@@ -115,7 +117,7 @@ struct CardDeck: View {
         } else {
             // Static back cards rasterise once instead of re-compositing
             // their shadows on every drag frame.
-            SwipeCard(profile: profile, viewer: viewer)
+            SwipeCard(profile: profile, viewer: viewer, reportSurface: reportSurface)
                 .drawingGroup()
         }
     }

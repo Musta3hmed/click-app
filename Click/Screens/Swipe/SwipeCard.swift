@@ -12,9 +12,14 @@ struct SwipeCard: View {
     let profile: UserProfile
     /// The viewer's own profile — shared-interest chips need both sides.
     var viewer: UserProfile? = nil
+    /// Report context ("deck", "deck lens:<community-id>").
+    var reportSurface: String = "deck"
 
     @Environment(\.motion) private var motion
+    @Environment(\.modelContext) private var context
     @State private var photoIndex = 0
+    /// Resolved once per card, not per drag frame.
+    @State private var sharedCommunity: Community?
     /// Decoded once per card — decoding JPEGs inside a computed property ran
     /// on every drag frame once real photos existed.
     @State private var photos: [UIImage] = []
@@ -53,7 +58,7 @@ struct SwipeCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
 
-            SafetyMenu(profile: profile)
+            SafetyMenu(profile: profile, surface: reportSurface)
                 .padding(6)
                 .background {
                     Circle().fill(.ultraThinMaterial)
@@ -76,6 +81,7 @@ struct SwipeCard: View {
         .task(id: profile.id) {
             photos = profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
             photoIndex = 0
+            sharedCommunity = CommunityService.sharedCommunity(viewer, profile, in: context)
         }
         // DemoPhotos can add photos while the card is on screen.
         .onChange(of: profile.photos.count) { _, _ in
@@ -166,6 +172,23 @@ struct SwipeCard: View {
                         .foregroundStyle(Theme.onImagePrimary)
                         .lineLimit(2)
                 }
+            }
+
+            // At most ONE community chip, and only when shared — showing
+            // someone's community to a non-member is a disclosure with no
+            // consent story.
+            if let community = sharedCommunity {
+                HStack(spacing: 5) {
+                    Image(systemName: community.symbolName)
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(CommunityService.tint(community.tintToken))
+                    Text("you're both in \(community.name)")
+                        .font(.clickPlain(.caption, weight: .bold))
+                        .foregroundStyle(Theme.onImagePrimary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Theme.onImageFillStrong))
             }
 
             if let line = InterestMatching.sharedLine(viewer, profile) {

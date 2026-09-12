@@ -104,6 +104,14 @@ struct ClickModelTests {
         context.insert(Match(profile: me))
         context.insert(Wallet(coins: 50))
 
+        // Community traces: a membership and a user-created community.
+        CommunityService.seedIfNeeded(context)
+        context.insert(CommunityMembership(communityID: "film-club", member: me))
+        _ = CommunityService.requestCreation(
+            name: "my thing", summary: "", symbolName: "sparkles",
+            tintToken: "brandPink", interestIDs: [], in: context
+        )
+
         // Behavioural data on candidate rows must not survive either.
         let candidateDescriptor = FetchDescriptor<UserProfile>(
             predicate: #Predicate { !$0.isCurrentUser }
@@ -127,6 +135,14 @@ struct ClickModelTests {
         // Candidates are demo content and must survive.
         let candidates = FetchDescriptor<UserProfile>(predicate: #Predicate { !$0.isCurrentUser })
         #expect(try context.fetchCount(candidates) > 20)
+
+        // The account's memberships cascade with the profile row; its
+        // created communities are removed explicitly. Candidate
+        // memberships (demo content) survive.
+        let myMemberships = try context.fetch(FetchDescriptor<CommunityMembership>())
+        #expect(myMemberships.allSatisfy { $0.member?.isCurrentUser != true })
+        let created = FetchDescriptor<Community>(predicate: #Predicate { $0.createdByCurrentUser })
+        #expect(try context.fetchCount(created) == 0, "User-created communities must not survive erasure")
     }
 
     @Test func photosStayOrderedBySortIndex() throws {

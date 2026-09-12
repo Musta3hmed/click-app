@@ -28,6 +28,10 @@ struct ProfileView: View {
     @State private var showingSettings = false
     @State private var showingEditProfile = false
     @State private var showingCardPreview = false
+    @State private var showingCommunities = false
+
+    @Query(sort: [SortDescriptor(\Community.sortIndex), SortDescriptor(\Community.createdAt)])
+    private var allCommunities: [Community]
     @State private var showingCoinStore = false
     @State private var showingSubscription = false
     @State private var referralCode = ""
@@ -55,6 +59,7 @@ struct ProfileView: View {
                 OverlappingSheet(ambient: true, collapseProgress: headerCollapse) {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
+                        communitiesSection
                         subscriptionSection
                         bingoSection
                         dailyRewardsSection
@@ -86,6 +91,9 @@ struct ProfileView: View {
             if let me {
                 ProfileCardPreview(profile: me)
             }
+        }
+        .sheet(isPresented: $showingCommunities) {
+            CommunitiesView()
         }
         .sheet(isPresented: $showingCoinStore) {
             CoinStoreView(coinEarnTrigger: $coinEarnTrigger)
@@ -250,6 +258,62 @@ struct ProfileView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Communities
+
+    /// Compact strip: joined communities as chips, plus the way in. Not
+    /// a fourth tab — the sheet owns discovery.
+    private var communitiesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("communities")
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(myCommunities) { community in
+                        HStack(spacing: 6) {
+                            Image(systemName: community.symbolName)
+                                .font(.system(size: 12, weight: .heavy))
+                                .foregroundStyle(CommunityService.tint(community.tintToken))
+                            Text(community.name)
+                                .font(.click(.footnote, weight: .heavy))
+                                .foregroundStyle(Theme.primary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Theme.surface, in: Capsule())
+                        .accessibilityLabel("Member of \(community.name)")
+                    }
+
+                    Button {
+                        showingCommunities = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: myCommunities.isEmpty ? "person.3.fill" : "plus")
+                                .font(.system(size: 12, weight: .heavy))
+                            Text(myCommunities.isEmpty ? "find your communities" : "more")
+                                .font(.click(.footnote, weight: .heavy))
+                        }
+                        .foregroundStyle(Theme.onPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Theme.primary, in: Capsule())
+                    }
+                    .buttonStyle(.click)
+                    .accessibilityLabel(myCommunities.isEmpty ? "Find your communities" : "More communities")
+                }
+                .padding(.horizontal, Theme.Metric.gutter)
+            }
+            .scrollIndicators(.hidden)
+            .padding(.horizontal, -Theme.Metric.gutter)
+        }
+        .padding(.horizontal, Theme.Metric.gutter)
+    }
+
+    private var myCommunities: [Community] {
+        guard let me else { return [] }
+        let joined = Set(me.memberships.map(\.communityID))
+        return allCommunities.filter { joined.contains($0.id) && $0.state == .approved }
     }
 
     // MARK: - Subscription

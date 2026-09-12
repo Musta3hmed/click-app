@@ -504,7 +504,7 @@ private struct ConversationRow: View {
             }
 
             if let participant = conversation.participant {
-                SafetyMenu(profile: participant)
+                SafetyMenu(profile: participant, surface: "chats")
             }
         }
         .padding(.horizontal, Theme.Metric.gutter)
