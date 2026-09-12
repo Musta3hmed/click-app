@@ -18,6 +18,9 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection: AppTab = .swipe
     @State private var chrome = ChromeState()
+    /// Non-blocking welcome-back banner after >= 48h away (MEGA-BRIEF
+    /// 4.5) — what's waiting, never an interstitial, never guilt.
+    @State private var returnSummary: String?
     /// The launch logo carries into WelcomeView — same mark, free continuity.
     @Namespace private var logoNamespace
 
@@ -102,13 +105,16 @@ struct RootView: View {
             // derived from canonical interest ids.
             CommunityService.seedIfNeeded(context)
             Boost.foregroundTick(in: context)
+            checkReturnGap()
             await DemoPhotos.seedIfNeeded(context)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Boost.foregroundTick(in: context)
+                checkReturnGap()
             }
         }
+        .overlay(alignment: .top) { returnBanner }
         // Full-screen: a brand takeover inside a sheet's rounded card with
         // a grabber was a register mismatch.
         .fullScreenCover(isPresented: welcomeSheetBinding) {
@@ -136,6 +142,78 @@ struct RootView: View {
 
     private var currentUserName: String {
         currentUsers.first { !$0.isDeleted }?.name ?? ""
+    }
+
+    // MARK: - Welcome-back banner (MEGA-BRIEF 4.5)
+
+    /// After >= 48h away, say what's actually waiting. Non-blocking,
+    /// dismissible, no guilt, no countdowns.
+    private func checkReturnGap() {
+        let defaults = UserDefaults.standard
+        let lastActive = defaults.object(forKey: DefaultsKey.lastActiveAt) as? Date
+        defaults.set(Date.now, forKey: DefaultsKey.lastActiveAt)
+
+        guard onboardingCompleted,
+              let lastActive,
+              Date.now.timeIntervalSince(lastActive) >= 48 * 60 * 60 else { return }
+
+        var parts: [String] = []
+
+        let unread = ((try? context.fetch(FetchDescriptor<Conversation>())) ?? [])
+            .filter { $0.isVisible && $0.unreadCount > 0 }
+            .count
+        if unread > 0 {
+            parts.append("\(unread) unread chat\(unread == 1 ? "" : "s")")
+        }
+
+        let unclaimed = ((try? context.fetch(FetchDescriptor<DailyReward>())) ?? [])
+            .contains { !$0.isClaimed }
+        if unclaimed {
+            parts.append("your daily reward is ready")
+        }
+
+        // Everything that expires does so silently — acknowledge it.
+        if let me = currentUsers.first(where: { !$0.isDeleted }),
+           let until = me.boostedUntil, until < .now, until > lastActive {
+            parts.append("your boost finished while you were away")
+        }
+
+        guard !parts.isEmpty else { return }
+        withAnimation(Theme.Motion.state) {
+            returnSummary = "welcome back — " + parts.joined(separator: " · ")
+        }
+    }
+
+    @ViewBuilder
+    private var returnBanner: some View {
+        if let returnSummary {
+            HStack(spacing: 10) {
+                Image(systemName: "hand.wave.fill")
+                    .foregroundStyle(Theme.brandOrange)
+                    .accessibilityHidden(true)
+                Text(returnSummary)
+                    .font(.clickPlain(.footnote, weight: .semibold))
+                    .foregroundStyle(Theme.primary)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+                Button {
+                    withAnimation(Theme.Motion.state) { self.returnSummary = nil }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.clickQuiet)
+                .accessibilityLabel("Dismiss")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .cardSurface(radius: Theme.Metric.control)
+            .padding(.horizontal, Theme.Metric.gutter)
+            .padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .combine)
+        }
     }
 }
 

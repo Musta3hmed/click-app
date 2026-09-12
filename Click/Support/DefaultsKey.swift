@@ -44,4 +44,8 @@ enum DefaultsKey {
     /// Per-install bingo seed salt (anti-cheat, MEGA-BRIEF 0.7). Install
     /// metadata, not account data — AccountEraser leaves it alone.
     static let bingoSeedSalt = "bingoSeedSalt"
+
+    /// Last foreground timestamp for the welcome-back banner (account-
+    /// scoped; AccountEraser clears it).
+    static let lastActiveAt = "lastActiveAt"
 }

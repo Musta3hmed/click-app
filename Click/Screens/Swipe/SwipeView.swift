@@ -37,6 +37,8 @@ struct SwipeView: View {
     @Query(sort: [SortDescriptor(\Community.sortIndex), SortDescriptor(\Community.createdAt)])
     private var allCommunities: [Community]
 
+    @Query private var wallets: [Wallet]
+
     // MARK: Swipe state
 
     /// Persisted decisions (MEGA-BRIEF 4.2) — session @State meant every
@@ -156,6 +158,22 @@ struct SwipeView: View {
     private var header: some View {
         TexturedHeader(title: "swipe", texture: .clouds) {
             HStack(spacing: 10) {
+                // The streak lives where the user actually is (the swipe
+                // tab is the default) instead of below the fold on the
+                // profile tab (MEGA-BRIEF 4.4). Cosmetic-plus-reward only
+                // — never paid streak repair.
+                if let streak = wallets.first?.currentStreak, streak > 1 {
+                    GlassCapsule {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(Theme.brandOrange)
+                        Text("\(streak)")
+                            .font(.click(.footnote, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(streak) day claim streak")
+                }
+
                 if let me, me.isBoosted, let until = me.boostedUntil {
                     BoostBadge(until: until)
                 }

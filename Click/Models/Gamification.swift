@@ -76,6 +76,14 @@ final class Wallet {
     var lastMonthlyBonusAt: Date? = nil
     var lastWeeklyBoostAt: Date? = nil
 
+    /// Completed daily-reward cycles (MEGA-BRIEF 4.3): cycle 1+ doubles
+    /// the coin days, so day 30 is no longer identical to day 2.
+    /// Declared default keeps lightweight migration working.
+    var rewardCycle: Int = 0
+    /// Highest streak milestone already granted (7/14/30) — reset when
+    /// the streak breaks, so the climb can be earned again.
+    var lastMilestoneGranted: Int = 0
+
     init(id: String = "primary", coins: Int = 0) {
         self.id = id
         self.coins = coins

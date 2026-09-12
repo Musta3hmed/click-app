@@ -39,6 +39,7 @@ struct ProfileView: View {
     /// Bumped when coins are earned so the wallet coin spins.
     @State private var coinEarnTrigger = 0
     @State private var insufficientCoinsMessage: String?
+    @State private var milestoneMessage: String?
     /// Decoded once, not per body evaluation.
     @State private var myPhoto: UIImage?
     /// Scroll-driven header collapse, 0 → 1 over the first 56pt of scroll.
@@ -114,6 +115,17 @@ struct ProfileView: View {
             Button("OK") { referralFeedback = nil }
         } message: {
             Text(referralFeedback ?? "")
+        }
+        .alert(
+            "Streak milestone",
+            isPresented: Binding(
+                get: { milestoneMessage != nil },
+                set: { if !$0 { milestoneMessage = nil } }
+            )
+        ) {
+            Button("OK") { milestoneMessage = nil }
+        } message: {
+            Text(milestoneMessage ?? "")
         }
         .alert(
             "Not enough coins",
@@ -467,6 +479,13 @@ struct ProfileView: View {
                         .font(.click(.footnote, weight: .heavy))
                         .foregroundStyle(Theme.brandPink)
                 }
+                // Tier 2 after the first full cycle: coin days double
+                // (MEGA-BRIEF 4.3 — day 30 must differ from day 2).
+                if rewardMultiplier > 1 {
+                    Text("tier 2 · double coins")
+                        .font(.click(.footnote, weight: .heavy))
+                        .foregroundStyle(Theme.coin)
+                }
                 Spacer()
             }
             .padding(.horizontal, Theme.Metric.gutter)
@@ -477,7 +496,8 @@ struct ProfileView: View {
                         DailyRewardCard(
                             reward: reward,
                             isActive: reward.day == activeRewardDay,
-                            isClaimableToday: !claimedToday
+                            isClaimableToday: !claimedToday,
+                            multiplier: rewardMultiplier
                         ) {
                             claim(reward)
                         }
@@ -486,7 +506,17 @@ struct ProfileView: View {
                 .padding(.horizontal, Theme.Metric.gutter)
             }
             .scrollIndicators(.hidden)
+
+            Text("streak milestones: day 7 a boost, day 14 a super chat and 25 coins, day 30 sixty coins and one of every booster.")
+                .font(.clickPlain(.caption, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+                .padding(.horizontal, Theme.Metric.gutter)
         }
+    }
+
+    /// Cycle 1+ doubles coin days.
+    private var rewardMultiplier: Int {
+        (wallet?.rewardCycle ?? 0) >= 1 ? 2 : 1
     }
 
     /// The first unclaimed day is the one the user can collect.
@@ -507,22 +537,26 @@ struct ProfileView: View {
         guard !reward.isClaimed, !claimedToday else { return }
 
         // Credit BEFORE consuming, and never against a nil wallet or a
-        // missing inventory row.
+        // missing inventory row. Cycle 1+ doubles the coin days.
         let wallet = Wallet.ensure(in: context)
-        wallet.coins += reward.coinValue
+        wallet.coins += reward.coinValue * rewardMultiplier
         if let kind = reward.boosterKind {
             BoosterInventory.ensure(kind, in: context).count += 1
         }
 
-        // Streak: consecutive calendar days; a gap resets to 1.
+        // Streak: consecutive calendar days; a gap resets to 1 (and the
+        // milestone ladder resets with it, so it can be climbed again).
         if let last = wallet.lastClaimAt,
            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: .now),
            Calendar.current.isDate(last, inSameDayAs: yesterday) {
             wallet.currentStreak += 1
         } else {
             wallet.currentStreak = 1
+            wallet.lastMilestoneGranted = 0
         }
         wallet.lastClaimAt = .now
+
+        grantStreakMilestoneIfDue(wallet)
 
         reward.isClaimed = true
         reward.claimedAt = .now
@@ -531,11 +565,39 @@ struct ProfileView: View {
         Haptics.notify(.success)
     }
 
+    /// Named, non-random streak milestones (MEGA-BRIEF 4.3/4.4). Kept
+    /// cosmetic-plus-reward: there is deliberately NO paid streak repair.
+    private func grantStreakMilestoneIfDue(_ wallet: Wallet) {
+        let streak = wallet.currentStreak
+        guard [7, 14, 30].contains(streak), streak > wallet.lastMilestoneGranted else { return }
+        wallet.lastMilestoneGranted = streak
+
+        switch streak {
+        case 7:
+            BoosterInventory.ensure(.boost, in: context).count += 1
+            milestoneMessage = "7-day streak — you earned a boost."
+        case 14:
+            BoosterInventory.ensure(.superChat, in: context).count += 1
+            wallet.coins += 25
+            milestoneMessage = "14-day streak — a super chat and 25 coins."
+        case 30:
+            wallet.coins += 60
+            for kind in [BoosterKind.boost, .superChat, .bulkChat] {
+                BoosterInventory.ensure(kind, in: context).count += 1
+            }
+            milestoneMessage = "30-day streak — 60 coins and one of every booster."
+        default:
+            break
+        }
+    }
+
     /// After day 7 is claimed, the track restarts the NEXT day — without
-    /// this the section dies permanently.
+    /// this the section dies permanently. Completing a cycle advances the
+    /// tier instead of a pure sawtooth (MEGA-BRIEF 4.3).
     private func resetRewardCycleIfFinished() {
         guard !dailyRewards.isEmpty, dailyRewards.allSatisfy(\.isClaimed) else { return }
         guard !claimedToday else { return }
+        Wallet.ensure(in: context).rewardCycle += 1
         for reward in dailyRewards {
             reward.isClaimed = false
             reward.claimedAt = nil
@@ -611,9 +673,17 @@ private struct DailyRewardCard: View {
     let isActive: Bool
     /// False once anything was claimed today — one reward per calendar day.
     let isClaimableToday: Bool
+    /// Tier multiplier for coin days (1 on the first cycle, 2 after).
+    var multiplier: Int = 1
     let onClaim: () -> Void
 
     private var canCollect: Bool { isActive && !reward.isClaimed && isClaimableToday }
+
+    /// Coin days show the multiplied value; booster days keep their label.
+    private var displayLabel: String {
+        guard reward.boosterKind == nil, multiplier > 1 else { return reward.rewardLabel }
+        return "\(reward.coinValue * multiplier) coins"
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -629,7 +699,7 @@ private struct DailyRewardCard: View {
                     .foregroundStyle(iconColor)
             }
 
-            Text(reward.rewardLabel)
+            Text(displayLabel)
                 .font(.click(.footnote, weight: .heavy))
                 .foregroundStyle(reward.isClaimed || !isActive ? Theme.secondary : Theme.primary)
                 .lineLimit(1)
@@ -645,7 +715,7 @@ private struct DailyRewardCard: View {
                         .background(Theme.primary)
                 }
                 .buttonStyle(.click)
-                .accessibilityLabel("Collect day \(reward.day) reward: \(reward.rewardLabel)")
+                .accessibilityLabel("Collect day \(reward.day) reward: \(displayLabel)")
             } else {
                 Text(statusText)
                     .font(.click(.caption, weight: .bold))

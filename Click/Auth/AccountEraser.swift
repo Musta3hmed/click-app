@@ -84,6 +84,8 @@ enum AccountEraser {
         defaults.removeObject(forKey: DefaultsKey.filterMaxAge)
         defaults.removeObject(forKey: DefaultsKey.filterVerifiedOnly)
         defaults.removeObject(forKey: DefaultsKey.filterInterests)
+        defaults.removeObject(forKey: DefaultsKey.filterInterestsMatchAll)
+        defaults.removeObject(forKey: DefaultsKey.lastActiveAt)
         // DefaultsKey.appearance stays — it is a device preference.
     }
 }
