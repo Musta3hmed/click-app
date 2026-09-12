@@ -2,9 +2,10 @@
 //  ProfileView.swift
 //  Click
 //
-//  Identity, daily bingo, boosters, daily reward streak, referral. The
-//  paid surfaces (offers, subscription, coin store, challenges) were
-//  deliberately removed — do not reintroduce them without a decision.
+//  Identity, subscription, daily bingo, boosters, daily reward streak,
+//  referral. Monetization surfaces (coin store, subscription tiers) were
+//  added by owner decision on 12 Sep 2026 — but they are SIMULATED until
+//  a billing backend exists, and every surface says so.
 //
 
 import SwiftUI
@@ -25,12 +26,22 @@ struct ProfileView: View {
     @Query private var wallets: [Wallet]
 
     @State private var showingSettings = false
+    @State private var showingEditProfile = false
+    @State private var showingCoinStore = false
+    @State private var showingSubscription = false
     @State private var referralCode = ""
+    @State private var referralFeedback: String?
     /// Bumped when coins are earned so the wallet coin spins.
     @State private var coinEarnTrigger = 0
     @State private var insufficientCoinsMessage: String?
+    /// Decoded once, not per body evaluation.
+    @State private var myPhoto: UIImage?
+    /// Scroll-driven header collapse, 0 → 1 over the first 56pt of scroll.
+    @State private var headerCollapse: CGFloat = 0
 
-    private var me: UserProfile? { currentUsers.first }
+    @Environment(\.motion) private var motion
+
+    private var me: UserProfile? { currentUsers.first { !$0.isDeleted } }
     private var wallet: Wallet? { wallets.first }
 
     var body: some View {
@@ -40,9 +51,10 @@ struct ProfileView: View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                OverlappingSheet {
+                OverlappingSheet(ambient: true, collapseProgress: headerCollapse) {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
+                        subscriptionSection
                         bingoSection
                         dailyRewardsSection
                         boostersSection
@@ -54,11 +66,40 @@ struct ProfileView: View {
                 .tabBarClearance()
             }
             .scrollIndicators(.hidden)
+            // Drives the header collapse 1:1 with the finger.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                headerCollapse = min(max(offset / HeaderCollapse.distance, 0), 1)
+            }
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        .sheet(isPresented: $showingEditProfile) {
+            EditProfileView()
+        }
+        .sheet(isPresented: $showingCoinStore) {
+            CoinStoreView(coinEarnTrigger: $coinEarnTrigger)
+        }
+        .sheet(isPresented: $showingSubscription) {
+            SubscriptionView(coinEarnTrigger: $coinEarnTrigger)
+        }
+        .task(id: me?.photos.count ?? 0) {
+            myPhoto = me?.orderedPhotos.first.flatMap { UIImage(data: $0.data) }
+        }
+        .alert(
+            "Referral code",
+            isPresented: Binding(
+                get: { referralFeedback != nil },
+                set: { if !$0 { referralFeedback = nil } }
+            )
+        ) {
+            Button("OK") { referralFeedback = nil }
+        } message: {
+            Text(referralFeedback ?? "")
         }
         .alert(
             "Not enough coins",
@@ -77,20 +118,30 @@ struct ProfileView: View {
     // MARK: - Header
 
     private var header: some View {
-        TexturedHeader(title: "", texture: .water) {
+        // A real title so all three tab headers share a baseline.
+        TexturedHeader(title: "profile", texture: .water, collapseProgress: headerCollapse) {
             HStack(spacing: 10) {
-                Spacer()
                 GlassCapsule {
                     CoinView(size: 20, earnTrigger: coinEarnTrigger)
                     Text((wallet?.coins ?? 0).formatted())
                         .font(.click(.subheadline, weight: .heavy))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
-                        .animation(.snappy, value: wallet?.coins ?? 0)
+                        .animation(motion.numeric, value: wallet?.coins ?? 0)
+                    // The "+" opens the coin store.
+                    Button {
+                        showingCoinStore = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: showingCoinStore)
+                    }
+                    .buttonStyle(.clickQuiet)
+                    .accessibilityLabel("Get more coins")
                 }
-                .font(.system(size: 15, weight: .bold))
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(wallet?.coins ?? 0) coins")
+                // .contain so the buy button stays reachable for VoiceOver.
+                .accessibilityElement(children: .contain)
 
                 GlassCircleButton(systemImage: "gearshape.fill", accessibilityTitle: "Settings") {
                     showingSettings = true
@@ -101,18 +152,23 @@ struct ProfileView: View {
 
     // MARK: - Identity
 
+    /// Avatar size and the derived straddle offsets, named instead of
+    /// magic-numbered. 116pt (not 132) so it clears the coin capsule on a
+    /// 375pt screen; half rides up over the header edge.
+    private static let avatarSize: CGFloat = 116
+
     private var identityBlock: some View {
         VStack(spacing: 12) {
             // Half in the header, half in the sheet — a deliberate straddle.
-            // 116pt (not 132) so it clears the coin capsule on a 375pt screen.
             StickerAvatar(
                 name: me?.name ?? "You",
-                size: 116,
+                size: Self.avatarSize,
                 badgeNumber: me?.displayAge,
-                isVerified: me?.isVerified ?? false
+                isVerified: me?.isVerified ?? false,
+                photo: myPhoto
             )
-            .offset(y: -58 - Theme.Metric.sheetOverlap / 2)
-            .padding(.bottom, -(58 - 8) - Theme.Metric.sheetOverlap / 2)
+            .offset(y: -Self.avatarSize / 2 - Theme.Metric.sheetOverlap / 2)
+            .padding(.bottom, -(Self.avatarSize / 2 - 8) - Theme.Metric.sheetOverlap / 2)
 
             HStack(spacing: 8) {
                 CountryBadge(code: me?.countryCode)
@@ -126,9 +182,95 @@ struct ProfileView: View {
                 }
             }
 
-            PillButton(title: "edit profile") {}
+            if let me, me.isBoosted, let until = me.boostedUntil {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.white)
+                    Text(timerInterval: Date.now...until, countsDown: true)
+                        .font(.click(.footnote, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Theme.brandViolet, in: Capsule())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Boost active")
+                .accessibilityValue("about \(max(1, Int(until.timeIntervalSinceNow / 60))) minutes remaining")
+            }
+
+            HStack(spacing: 16) {
+                Label("\(wallet?.profileViews ?? 0) views", systemImage: "eye.fill")
+                    .font(.clickPlain(.footnote, weight: .semibold))
+                    .foregroundStyle(Theme.secondary)
+
+                // The gold tier's profile badge — a wired benefit.
+                if wallet?.subscriptionTier == .gold {
+                    Label("gold", systemImage: "crown.fill")
+                        .font(.click(.footnote, weight: .heavy))
+                        .foregroundStyle(Theme.coin)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("click gold member")
+                }
+            }
+
+            PillButton(title: "edit profile") {
+                showingEditProfile = true
+            }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Subscription
+
+    /// The tier card right under the identity block: shows the current
+    /// tier and opens the upgrade page.
+    private var subscriptionSection: some View {
+        let tier = wallet?.subscriptionTier ?? .free
+        return Button {
+            showingSubscription = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: tier == .gold ? "crown.fill" : "sparkles")
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundStyle(tier == .gold ? Theme.coin : Theme.brandPink)
+                    .symbolEffect(.bounce, value: showingSubscription)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tier.label)
+                        .font(.click(.headline, weight: .black))
+                        .foregroundStyle(Theme.primary)
+                        .contentTransition(.opacity)
+                    Text(
+                        tier == .free
+                            ? "upgrade for more super likes, coins and boosts"
+                            : "your perks are active - tap to manage"
+                    )
+                    .font(.clickPlain(.footnote, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                }
+
+                Spacer(minLength: 4)
+
+                Text(tier == .free ? "upgrade" : "manage")
+                    .font(.click(.subheadline, weight: .black))
+                    .foregroundStyle(Theme.onPrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Theme.primary, in: Capsule())
+            }
+            .padding(Theme.Metric.gutter)
+            .cardSurface(radius: Theme.Metric.card, elevated: true)
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous)
+                    .strokeBorder(Theme.brandGradient, lineWidth: tier == .free ? 1 : 2)
+            }
+        }
+        .buttonStyle(.click)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .animation(motion.state, value: tier)
+        .accessibilityLabel("Subscription: \(tier.label). \(tier == .free ? "Upgrade" : "Manage") your tier.")
     }
 
     // MARK: - Bingo
@@ -143,6 +285,11 @@ struct ProfileView: View {
 
     // MARK: - Boosters
 
+    /// Only the boosters with a real mechanic are sold — `admirers` and
+    /// `reveal` had none, and Click doesn't sell dead goods. The enum
+    /// cases survive for stored inventory rows.
+    private static let liveBoosterKinds: [BoosterKind] = [.boost, .superChat, .bulkChat]
+
     private var boostersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader("boosters")
@@ -152,20 +299,34 @@ struct ProfileView: View {
                 spacing: 12
             ) {
                 ForEach(orderedBoosters) { inventory in
-                    BoosterCard(kind: inventory.kind, count: inventory.count) {
-                        buyBooster(inventory)
-                    }
+                    BoosterCard(
+                        kind: inventory.kind,
+                        count: inventory.count,
+                        price: Self.boosterPrice,
+                        onAdd: { buyBooster(inventory) },
+                        onUse: inventory.kind == .boost ? { useBoost() } : nil
+                    )
                 }
             }
         }
         .padding(.horizontal, Theme.Metric.gutter)
     }
 
-    /// The @Query sorts by raw value, which is alphabetical. Present them in
-    /// the order the enum declares instead.
+    /// The @Query sorts by raw value, which is alphabetical. Present the
+    /// live kinds in the order the enum declares instead.
     private var orderedBoosters: [BoosterInventory] {
-        BoosterKind.allCases.compactMap { kind in
+        Self.liveBoosterKinds.compactMap { kind in
             boosters.first { $0.kindRaw == kind.rawValue }
+        }
+    }
+
+    /// Boost = real (locally simulated) profile visibility for 30 minutes.
+    private func useBoost() {
+        guard let me else { return }
+        if Boost.activate(for: me, in: context) {
+            Haptics.notify(.success)
+        } else {
+            Haptics.notify(.error)
         }
     }
 
@@ -189,13 +350,19 @@ struct ProfileView: View {
 
     private var dailyRewardsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                SectionHeader("daily rewards")
+            // One baseline row, no nested Spacer fight — the streak sits
+            // right next to its header instead of at the screen edge.
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("daily rewards")
+                    .font(.click(.title2, weight: .heavy))
+                    .foregroundStyle(Theme.primary)
+                    .accessibilityAddTraits(.isHeader)
                 if let streak = wallet?.currentStreak, streak > 1 {
                     Text("\(streak)-day streak")
                         .font(.click(.footnote, weight: .heavy))
                         .foregroundStyle(Theme.brandPink)
                 }
+                Spacer()
             }
             .padding(.horizontal, Theme.Metric.gutter)
 
@@ -273,32 +440,62 @@ struct ProfileView: View {
 
     // MARK: - Referral
 
+    /// Valid codes and their coin credit. Hardcoded until a backend exists.
+    private static let referralCodes: [String: Int] = [
+        "CLICK50": 50,
+        "FRIEND25": 25,
+        "WELCOME10": 10
+    ]
+
     private var referralSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader("referral code")
 
-            HStack(spacing: 10) {
-                TextField("drop the code", text: $referralCode)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .font(.clickPlain(.body, weight: .medium))
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
-                    .background(Theme.surface, in: Capsule())
-                    .accessibilityLabel("Referral code")
+            if wallet?.referralCodeUsed != nil {
+                Label("code applied — thanks!", systemImage: "checkmark.circle.fill")
+                    .font(.clickPlain(.subheadline, weight: .semibold))
+                    .foregroundStyle(Theme.online)
+            } else {
+                HStack(spacing: 10) {
+                    TextField("drop the code", text: $referralCode)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .font(.clickPlain(.body, weight: .medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Theme.surface, in: Capsule())
+                        .accessibilityLabel("Referral code")
 
-                PillButton(
-                    title: "add code",
-                    isEnabled: !referralCode.trimmingCharacters(in: .whitespaces).isEmpty,
-                    horizontalPadding: 20
-                ) {
-                    Wallet.ensure(in: context).referralCodeUsed = referralCode
-                    referralCode = ""
-                    try? context.save()
+                    PillButton(
+                        title: "add code",
+                        isEnabled: !referralCode.trimmingCharacters(in: .whitespaces).isEmpty,
+                        horizontalPadding: 20
+                    ) {
+                        redeemReferralCode()
+                    }
                 }
             }
         }
         .padding(.horizontal, Theme.Metric.gutter)
+    }
+
+    /// A real redemption: valid codes credit coins, garbage says so —
+    /// nothing is silently swallowed any more.
+    private func redeemReferralCode() {
+        let code = referralCode.trimmingCharacters(in: .whitespaces).uppercased()
+        guard let credit = Self.referralCodes[code] else {
+            Haptics.notify(.error)
+            referralFeedback = "\"\(code)\" isn't a valid referral code. Check the spelling and try again."
+            return
+        }
+        let wallet = Wallet.ensure(in: context)
+        wallet.coins += credit
+        wallet.referralCodeUsed = code
+        try? context.save()
+        referralCode = ""
+        coinEarnTrigger += 1
+        Haptics.notify(.success)
+        referralFeedback = "Code accepted — \(credit) coins added to your wallet."
     }
 }
 
@@ -354,11 +551,11 @@ private struct DailyRewardCard: View {
         }
         .padding(.top, 12)
         .frame(width: 104)
-        .background(canCollect ? Theme.surface : Theme.separator.opacity(0.45))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(canCollect ? Theme.surface : Theme.fillDisabled.opacity(0.75))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous))
         .overlay {
             if canCollect {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
                     .strokeBorder(Theme.primary, lineWidth: 2)
             }
         }

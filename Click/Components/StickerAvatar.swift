@@ -4,9 +4,9 @@
 //
 //  Cut-out style avatar with a thick white outline and drop shadow.
 //
-//  There are no photo assets in the project, so avatars render as initials
-//  on a deterministic gradient derived from the name. Swap `avatarBody` for
-//  an AsyncImage once real photos exist.
+//  Renders the provided photo when one exists (the current user's main
+//  profile photo, for example); otherwise falls back to initials on a
+//  deterministic gradient derived from the name.
 //
 
 import SwiftUI
@@ -17,6 +17,8 @@ struct StickerAvatar: View {
     var badgeNumber: Int? = nil
     var isVerified: Bool = false
     var isOnline: Bool = false
+    /// A real photo wins over the initials gradient when provided.
+    var photo: UIImage? = nil
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -44,17 +46,24 @@ struct StickerAvatar: View {
         .accessibilityLabel(accessibilityText)
     }
 
+    @ViewBuilder
     private var avatarBody: some View {
-        LinearGradient(
-            colors: gradientColors,
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            Text(initials)
-                .font(.system(size: size * 0.38, weight: .heavy, design: .rounded))
-                .italic()
-                .foregroundStyle(.white)
+        if let photo {
+            Image(uiImage: photo)
+                .resizable()
+                .scaledToFill()
+        } else {
+            LinearGradient(
+                colors: gradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .overlay {
+                Text(initials)
+                    .font(.system(size: size * 0.38, weight: .heavy, design: .rounded))
+                    .italic()
+                    .foregroundStyle(.white)
+            }
         }
     }
 

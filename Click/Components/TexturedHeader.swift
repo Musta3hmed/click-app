@@ -2,7 +2,7 @@
 //  TexturedHeader.swift
 //  Click
 //
-//  Blue gradient header with a soft photographic-feeling texture, a large
+//  Warm brand-gradient header with a soft procedural texture, a large
 //  lowercase italic title, and a trailing glass capsule of actions.
 //
 //  The textures are drawn procedurally because the project ships with no
@@ -17,9 +17,23 @@ enum HeaderTexture {
     case water
 }
 
+/// Geometry of the scroll-driven header collapse (M137). Non-generic so
+/// call sites don't have to specialise `TexturedHeader` to reach it.
+enum HeaderCollapse {
+    static let expandedHeight: CGFloat = 148
+    static let collapsedHeight: CGFloat = 92
+    /// The scroll distance that maps onto a full collapse.
+    static var distance: CGFloat { expandedHeight - collapsedHeight }
+}
+
 struct TexturedHeader<Trailing: View>: View {
     let title: String
     var texture: HeaderTexture = .clouds
+    /// Scroll-driven collapse, 0 (expanded, 148pt) → 1 (collapsed, 92pt).
+    /// Driven 1:1 by the finger via `onScrollGeometryChange` — never
+    /// wrapped in `withAnimation`, and guarded below so no implicit
+    /// animation can smooth it into lag.
+    var collapseProgress: CGFloat = 0
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -31,6 +45,9 @@ struct TexturedHeader<Trailing: View>: View {
                 .font(.click(.largeTitle, weight: .heavy))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                // 1 → 0.66, pinned to its baseline corner so the title
+                // shrinks in place instead of drifting.
+                .scaleEffect(1 - 0.34 * collapseProgress, anchor: .bottomLeading)
 
             Spacer(minLength: Theme.Metric.gutter)
 
@@ -39,17 +56,31 @@ struct TexturedHeader<Trailing: View>: View {
         .padding(.horizontal, Theme.Metric.gutter)
         .padding(.bottom, Theme.Metric.sheetOverlap + 12)
         .frame(maxWidth: .infinity, alignment: .bottomLeading)
-        .frame(height: 148, alignment: .bottom)
+        .frame(
+            height: HeaderCollapse.expandedHeight - HeaderCollapse.distance * collapseProgress,
+            alignment: .bottom
+        )
         .background {
             ZStack {
                 Theme.headerGradient
-                switch texture {
-                case .clouds: CloudTexture()
-                case .water: WaterTexture()
+                // Static content, frozen into one raster so it stops
+                // re-compositing at 120Hz during drags on the sheet below.
+                Group {
+                    switch texture {
+                    case .clouds: CloudTexture()
+                    case .water: WaterTexture()
+                    }
                 }
+                .drawingGroup()
+                // Parallax at half the collapse rate.
+                .offset(y: -HeaderCollapse.distance * collapseProgress * 0.5)
             }
             .ignoresSafeArea(edges: .top)
         }
+        // Scroll-driven values are 1:1 with the finger: strip any implicit
+        // animation whenever the progress changes (and only then, so the
+        // trailing content keeps its own transitions).
+        .transaction(value: collapseProgress) { $0.animation = nil }
     }
 }
 
@@ -124,16 +155,27 @@ private struct WaterTexture: View {
 // MARK: - Glass capsule
 
 /// Frosted capsule that groups small header actions, as in the reference.
+/// Sets its own glyph size — the three tabs used to override it with
+/// three different values.
 struct GlassCapsule<Content: View>: View {
     @ViewBuilder var content: () -> Content
+
+    @ScaledMetric(relativeTo: .callout) private var glyphSize = Theme.Metric.GlyphSize.s
 
     var body: some View {
         HStack(spacing: 14) {
             content()
         }
+        .font(.system(size: glyphSize, weight: .bold))
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(.ultraThinMaterial, in: Capsule())
+        // The header stays warm in dark mode, but .ultraThinMaterial flips
+        // dark and turned these capsules into smudges — pin the glass light
+        // so it survives the theme switch.
+        .background {
+            Capsule().fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .light)
+        }
         .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1))
     }
 }
@@ -153,9 +195,14 @@ struct GlassCircleButton: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 42, height: 42)
-                .background(.ultraThinMaterial, in: Circle())
+                // Pinned light for the same reason as GlassCapsule.
+                .background {
+                    Circle().fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .light)
+                }
                 .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1))
         }
+        .buttonStyle(.clickSilent)
         .accessibilityLabel(accessibilityTitle)
     }
 }

@@ -14,11 +14,15 @@ import SwiftData
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthSession.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection: AppTab = .swipe
+    @State private var chrome = ChromeState()
+    /// The launch logo carries into WelcomeView — same mark, free continuity.
+    @Namespace private var logoNamespace
 
-    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
-
-    @Query private var conversations: [Conversation]
+    @AppStorage(DefaultsKey.onboardingCompleted) private var onboardingCompleted = false
+    @AppStorage(DefaultsKey.phoneVerified) private var phoneVerified = false
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -27,12 +31,16 @@ struct RootView: View {
         Group {
             switch auth.state {
             case .restoring:
-                launchPlaceholder
+                LaunchPlaceholder(logoNamespace: logoNamespace)
             case .signedOut:
-                WelcomeView()
+                WelcomeView(logoNamespace: logoNamespace)
                     .transition(.opacity)
             case .signedIn:
-                if onboardingCompleted {
+                // Every account verifies a phone number before onboarding.
+                if !phoneVerified {
+                    PhoneVerificationView()
+                        .transition(.opacity)
+                } else if onboardingCompleted {
                     mainShell
                         .transition(.opacity)
                 } else {
@@ -41,31 +49,17 @@ struct RootView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.4), value: auth.state)
-        .animation(.easeInOut(duration: 0.4), value: onboardingCompleted)
-    }
-
-    /// Shown while the Keychain (and, with real Apple auth, a bounded
-    /// network check) restores the session. Logo + spinner, not a bare
-    /// gradient — restore can take a moment on weak signal.
-    private var launchPlaceholder: some View {
-        ZStack {
-            Theme.brandGradient.ignoresSafeArea()
-            VStack(spacing: 20) {
-                ClickLogoView(size: 96)
-                ProgressView()
-                    .tint(.white)
-            }
-        }
-        // .ignore so the label is actually announced — on a plain ZStack it
-        // was dropped and VoiceOver read the unlabeled children instead.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Click is starting")
+        .animation(Theme.Motion.screenFade, value: auth.state)
+        .animation(Theme.Motion.screenFade, value: onboardingCompleted)
+        .animation(Theme.Motion.screenFade, value: phoneVerified)
+        // The single place Reduce Motion is read; everything below resolves
+        // tiers through @Environment(\.motion).
+        .environment(\.motion, ClickMotion(reduceMotion: reduceMotion))
     }
 
     private var mainShell: some View {
         ZStack(alignment: .bottom) {
-            Theme.background.ignoresSafeArea()
+            Theme.backgroundWash.ignoresSafeArea()
 
             Group {
                 switch selection {
@@ -75,18 +69,48 @@ struct RootView: View {
                 }
             }
             .transition(.opacity)
+            // Content cross-fades on screenFade, decoupled from the pill's
+            // spring in the tab bar.
+            .animation(Theme.Motion.screenFade, value: selection)
 
-            FloatingTabBar(selection: $selection, badges: badges)
-                // Real margin on devices without a home indicator (SE).
-                .padding(.bottom, 10)
+            if !chrome.tabBarHidden {
+                // TabBarHost owns the badge @Query — a message write no
+                // longer re-renders the entire shell.
+                TabBarHost(selection: $selection)
+                    // Real margin on devices without a home indicator (SE).
+                    .padding(.bottom, 10)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
+            }
         }
+        .animation(Theme.Motion.state, value: chrome.tabBarHidden)
+        .onChange(of: chrome.requestedTab) { _, requested in
+            guard let requested else { return }
+            withAnimation(Theme.Motion.state) { selection = requested }
+            chrome.requestedTab = nil
+        }
+        .environment(chrome)
         .task {
             MockData.seedIfNeeded(context)
+            Boost.foregroundTick(in: context)
             await DemoPhotos.seedIfNeeded(context)
         }
-        .sheet(isPresented: welcomeSheetBinding) {
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Boost.foregroundTick(in: context)
+            }
+        }
+        // Full-screen: a brand takeover inside a sheet's rounded card with
+        // a grabber was a register mismatch.
+        .fullScreenCover(isPresented: welcomeSheetBinding) {
             WelcomeCelebrationView(name: currentUserName) {
-                selection = .swipe
+                // One animated helper for the selection mutation — the pill
+                // used to teleport at the exact moment the app should feel
+                // celebratory.
+                withAnimation(Theme.Motion.state) { selection = .swipe }
                 welcomePopupShown = true
             }
         }
@@ -94,7 +118,7 @@ struct RootView: View {
 
     // MARK: - First-run welcome popup
 
-    @AppStorage("welcomePopupShown") private var welcomePopupShown = false
+    @AppStorage(DefaultsKey.welcomePopupShown) private var welcomePopupShown = false
 
     /// Fires exactly once: the first arrival in the shell after onboarding.
     private var welcomeSheetBinding: Binding<Bool> {
@@ -106,6 +130,68 @@ struct RootView: View {
 
     private var currentUserName: String {
         currentUsers.first { !$0.isDeleted }?.name ?? ""
+    }
+}
+
+// MARK: - Launch placeholder
+
+/// Shown while the Keychain (and, with real Apple auth, a bounded network
+/// check) restores the session. The spinner is delayed 600ms so a fast
+/// restore never flashes it; while waiting the logo breathes gently.
+private struct LaunchPlaceholder: View {
+    let logoNamespace: Namespace.ID
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showSpinner = false
+
+    var body: some View {
+        ZStack {
+            // launchGradient: full brand in light, warm near-dark in dark —
+            // no orange flash into a black app.
+            Theme.launchGradient.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Group {
+                    if reduceMotion {
+                        ClickLogoView(size: 96)
+                    } else {
+                        PhaseAnimator([false, true]) { pulsing in
+                            ClickLogoView(size: 96)
+                                .scaleEffect(pulsing ? 1.05 : 1.0)
+                        } animation: { _ in
+                            Theme.Motion.screenFade.speed(0.22)
+                        }
+                    }
+                }
+                .matchedGeometryEffect(id: "clickLogo", in: logoNamespace)
+
+                ProgressView()
+                    .tint(.white)
+                    .opacity(showSpinner ? 1 : 0)
+                    .animation(Theme.Motion.screenFade, value: showSpinner)
+            }
+        }
+        // .ignore so the label is actually announced — on a plain ZStack it
+        // was dropped and VoiceOver read the unlabeled children instead.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Click is starting")
+        .task {
+            try? await Task.sleep(for: .seconds(0.6))
+            showSpinner = true
+        }
+    }
+}
+
+// MARK: - Tab bar host
+
+/// Owns the badge computation and its @Query so message writes re-render
+/// only this leaf, never the whole shell (and its active screen).
+private struct TabBarHost: View {
+    @Binding var selection: AppTab
+
+    @Query private var conversations: [Conversation]
+
+    var body: some View {
+        FloatingTabBar(selection: $selection, badges: badges)
     }
 
     private var badges: [AppTab: Int] {

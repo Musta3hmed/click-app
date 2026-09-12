@@ -12,6 +12,9 @@ import Foundation
 enum AuthProviderKind: String, Codable, CaseIterable {
     case apple
     case google
+    /// Email + password. No backend: the password is validated but never
+    /// stored; the account id derives from the address.
+    case email
     case mock
 }
 

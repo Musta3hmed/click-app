@@ -34,10 +34,9 @@ xcodebuild -project 'Click.xcodeproj' \
   -configuration Debug build CODE_SIGNING_ALLOWED=NO
 ```
 
-Note: as of the last check there was **no iOS Simulator runtime installed** on
-Mustafa's machine (`xcrun simctl list runtimes` is empty). Install with
-`xcodebuild -downloadPlatform iOS` (~7GB) if you need to actually run the app
-rather than just compile it.
+If `xcrun simctl list runtimes` comes back empty, install a simulator
+runtime with `xcodebuild -downloadPlatform iOS` (~7GB) before trying to run
+the app rather than just compile it.
 
 ## Conventions
 
@@ -45,6 +44,34 @@ rather than just compile it.
 - SwiftData for persistence. Models are `@Model final class`.
 - Keep views small; extract subviews rather than growing one big `body`.
 - No third-party dependencies without discussing first.
+
+### Motion (phase 4)
+
+- **Never declare an animation curve outside `Theme.Motion`** —
+  `Theme.swift` and `ClickMotion.swift` are the only files allowed to
+  (CI lints for it). Call sites read `@Environment(\.motion)`, which maps
+  every tier to a short fade under Reduce Motion; never branch on
+  `accessibilityReduceMotion` in a view (RootView is the single read).
+- Buttons use `.buttonStyle(.click)` (or `.clickQuiet` / `.clickSilent`);
+  the style owns the press animation, the disabled treatment AND the
+  haptic — never add a manual haptic next to it.
+
+### Casing (phase 4)
+
+1. Anything **Click draws** is lowercase: titles, buttons, labels,
+   enum `label`s, menu items.
+2. Anything the **system** draws (alert titles/buttons/messages) is
+   sentence case.
+   All-caps is reserved for the hero headline, the two celebration
+   headlines, and the LIKE/NOPE stamps. Accessibility labels stay natural
+   sentence case (they are spoken, not drawn).
+
+### Layout tokens (phase 4)
+
+- Spacing on the 4pt grid via `Theme.Metric.Space` stops; corner radii via
+  the `Metric` radius tokens (a raw literal in `cornerRadius:` is allowed
+  only in ConfettiView/ClickLogoView); primary buttons are 52pt capsules;
+  text fields are 16/12 padding.
 
 ## Working together — IMPORTANT
 
@@ -97,9 +124,12 @@ Hard rules added in phase 3:
 - **Sign-out and account deletion go through `AuthSession.signOut(erasing:)`**
   → `AccountEraser`. Never leave the current-user row behind; it is bound to
   `ownerProviderID`.
-- **No paid surfaces** (offers/subscription/coin store) without a decision —
-  they were deliberately removed. Coins are earned (daily rewards, bingo)
-  and spent (boosters, bingo claims) only.
+- **Paid surfaces exist but are SIMULATED** (decision 12 Sep 2026,
+  superseding the earlier removal): the coin store (`CoinStoreView`) and
+  subscription tiers (`SubscriptionView`, free/click+/gold) take no real
+  payment — every purchase surface must carry the "demo — no real charge"
+  label until a billing backend exists. Do not wire real IAP without a
+  further decision.
 - The report sheet's copy must stay honest: there is NO moderation backend.
 
 Conventions that matter:

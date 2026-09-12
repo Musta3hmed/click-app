@@ -37,6 +37,7 @@ struct FloatingTabBar: View {
     /// Unread counts keyed by tab. Missing or zero means no badge.
     var badges: [AppTab: Int] = [:]
 
+    @Environment(\.motion) private var motion
     @Namespace private var pill
 
     var body: some View {
@@ -46,8 +47,10 @@ struct FloatingTabBar: View {
             }
         }
         .padding(6)
-        .background(Theme.primary, in: Capsule())
-        .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+        .background(Theme.tabBarFill, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.glowStroke, lineWidth: 1))
+        .compositingGroup()
+        .shadow(color: Theme.shadowColor, radius: 18, y: 8)
         .padding(.horizontal, 28)
     }
 
@@ -59,7 +62,7 @@ struct FloatingTabBar: View {
         Button {
             guard selection != tab else { return }
             Haptics.selection()
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
+            withAnimation(motion.state) {
                 selection = tab
             }
         } label: {
@@ -72,7 +75,7 @@ struct FloatingTabBar: View {
                     if badge > 0 {
                         Text(badge > 99 ? "99+" : "\(badge)")
                             .contentTransition(.numericText())
-                            .animation(.snappy, value: badge)
+                            .animation(motion.numeric, value: badge)
                             .font(.clickPlain(.caption2, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
@@ -93,13 +96,13 @@ struct FloatingTabBar: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)))
                 }
             }
-            .foregroundStyle(isSelected ? Theme.onPrimary : Theme.onPrimary.opacity(0.55))
+            .foregroundStyle(isSelected ? Theme.onTabBarFill : Theme.onTabBarFill.opacity(0.55))
             .padding(.horizontal, isSelected ? 18 : 14)
             .padding(.vertical, 12)
             .background {
                 if isSelected {
                     Capsule()
-                        .fill(Theme.onPrimary.opacity(0.14))
+                        .fill(Theme.onTabBarFill.opacity(0.14))
                         .matchedGeometryEffect(id: "activePill", in: pill)
                 }
             }
