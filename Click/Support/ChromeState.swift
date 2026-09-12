@@ -8,6 +8,7 @@
 //  appear and restores it on disappear.
 //
 
+import Foundation
 import Observation
 
 @Observable
