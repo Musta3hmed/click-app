@@ -213,6 +213,9 @@ struct ChatsView: View {
             }
         }
         .padding(.top, 8)
+        // Rows animate in/out (accepted requests slide away smoothly
+        // instead of snapping).
+        .animation(motion.state, value: visibleConversations.map(\.id))
         .tabBarClearance()
     }
 

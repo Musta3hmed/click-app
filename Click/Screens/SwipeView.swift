@@ -96,7 +96,12 @@ struct SwipeView: View {
                     composer
                 }
                 .padding(.top, 16)
-                .padding(.bottom, Theme.Metric.tabBarClearance)
+                // The keyboard covers the tab bar anyway: while the
+                // composer is focused the clearance collapses, so the
+                // whole column slides up and the field stays visible
+                // above the keyboard.
+                .padding(.bottom, composerFocused ? Theme.Metric.Space.m : Theme.Metric.tabBarClearance)
+                .animation(motion.state, value: composerFocused)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -312,25 +317,32 @@ struct SwipeView: View {
 
     // MARK: - Super like
 
-    /// 1 free per day, then booster-gated. With composer text the opener is
-    /// sent as a super-like thread; empty is a highlighted like. Rewinding
-    /// a super like deletes the rows but does NOT refund the booster/free
-    /// use — documented behaviour, not a bug.
+    /// Free per day up to the subscription tier's allowance (1 on free,
+    /// 5 on click+, unlimited on gold), then booster-gated. With composer
+    /// text the opener is sent as a super-like thread; empty is a
+    /// highlighted like. Rewinding a super like deletes the rows but does
+    /// NOT refund the booster/free use — documented behaviour, not a bug.
     private func superLike() {
         guard !deckBusy, let profile = remaining.first else { return }
 
         let wallet = Wallet.ensure(in: context)
-        let freeUsedToday = wallet.lastFreeSuperLikeAt.map { Calendar.current.isDateInToday($0) } ?? false
-        if freeUsedToday {
+        // Day rollover resets the allowance counter.
+        let sameDay = wallet.lastFreeSuperLikeAt.map { Calendar.current.isDateInToday($0) } ?? false
+        if !sameDay {
+            wallet.freeSuperLikesUsedToday = 0
+        }
+        let allowance = wallet.subscriptionTier.freeSuperLikesPerDay
+        if wallet.freeSuperLikesUsedToday < allowance {
+            wallet.freeSuperLikesUsedToday += 1
+            wallet.lastFreeSuperLikeAt = .now
+        } else {
             let inventory = BoosterInventory.ensure(.superChat, in: context)
             guard inventory.count > 0 else {
                 Haptics.notify(.error)
-                alertMessage = "You've used today's free super like, and you're out of super chat boosters. Earn more from daily rewards and bingo."
+                alertMessage = "You've used today's free super likes, and you're out of super chat boosters. Earn more from daily rewards and bingo — or upgrade your tier for a bigger daily allowance."
                 return
             }
             inventory.count -= 1
-        } else {
-            wallet.lastFreeSuperLikeAt = .now
         }
 
         let text = opener.trimmingCharacters(in: .whitespaces)

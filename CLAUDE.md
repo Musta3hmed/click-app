@@ -124,9 +124,12 @@ Hard rules added in phase 3:
 - **Sign-out and account deletion go through `AuthSession.signOut(erasing:)`**
   → `AccountEraser`. Never leave the current-user row behind; it is bound to
   `ownerProviderID`.
-- **No paid surfaces** (offers/subscription/coin store) without a decision —
-  they were deliberately removed. Coins are earned (daily rewards, bingo)
-  and spent (boosters, bingo claims) only.
+- **Paid surfaces exist but are SIMULATED** (decision 12 Sep 2026,
+  superseding the earlier removal): the coin store (`CoinStoreView`) and
+  subscription tiers (`SubscriptionView`, free/click+/gold) take no real
+  payment — every purchase surface must carry the "demo — no real charge"
+  label until a billing backend exists. Do not wire real IAP without a
+  further decision.
 - The report sheet's copy must stay honest: there is NO moderation backend.
 
 Conventions that matter:

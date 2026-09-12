@@ -64,8 +64,13 @@ final class Wallet {
     var profileViews: Int = 0
     /// Bulk message rate limit: at most one send per 24h.
     var lastBulkSendAt: Date? = nil
-    /// One free super like per day; after that it costs a booster.
+    /// Free super likes per day (allowance set by the subscription tier);
+    /// after that they cost a booster.
     var lastFreeSuperLikeAt: Date? = nil
+    var freeSuperLikesUsedToday: Int = 0
+    /// Simulated subscription (no real billing). Declared default keeps
+    /// lightweight migration working.
+    var subscriptionTierRaw: String = SubscriptionTier.free.rawValue
 
     init(id: String = "primary", coins: Int = 0) {
         self.id = id
@@ -78,6 +83,11 @@ final class Wallet {
     /// Day-1 economy unlock: without this the balance starts at 0, both
     /// sinks cost 25 and day-1 income is 5 — nothing is affordable.
     static let welcomeBonus = 50
+
+    var subscriptionTier: SubscriptionTier {
+        get { SubscriptionTier(rawValue: subscriptionTierRaw) ?? .free }
+        set { subscriptionTierRaw = newValue.rawValue }
+    }
 
     /// The single fetch-or-create path. Always goes through a fresh fetch —
     /// two views each lazily inserting from their own (possibly stale)

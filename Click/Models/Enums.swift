@@ -60,6 +60,77 @@ enum ChatFolder: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Subscription tiers. Purchases are SIMULATED until a billing backend
+/// exists - every surface that sells one says so ("demo - no real
+/// charge"). Prices are placeholders.
+enum SubscriptionTier: String, CaseIterable, Identifiable, Codable {
+    case free
+    case plus
+    case gold
+
+    var id: String { rawValue }
+
+    /// Lowercase - Click draws these (casing rule).
+    var label: String {
+        switch self {
+        case .free: "click"
+        case .plus: "click+"
+        case .gold: "click gold"
+        }
+    }
+
+    var priceLabel: String {
+        switch self {
+        case .free: "free"
+        case .plus: "$4.99 / month"
+        case .gold: "$9.99 / month"
+        }
+    }
+
+    /// Marketing copy per tier. The one wired-up benefit today is the
+    /// free-super-likes allowance; the rest are copy until a backend exists.
+    var benefits: [String] {
+        switch self {
+        case .free: [
+            "unlimited swiping",
+            "1 free super like a day",
+            "daily rewards and bingo",
+        ]
+        case .plus: [
+            "everything in click",
+            "5 free super likes a day",
+            "100 bonus coins every month",
+            "see who viewed your profile sooner",
+        ]
+        case .gold: [
+            "everything in click+",
+            "unlimited free super likes",
+            "300 bonus coins every month",
+            "a free boost every week",
+            "gold badge on your profile",
+        ]
+        }
+    }
+
+    /// The wired benefit: free super likes per day.
+    var freeSuperLikesPerDay: Int {
+        switch self {
+        case .free: 1
+        case .plus: 5
+        case .gold: .max
+        }
+    }
+
+    /// Simulated first-month bonus credited on upgrade.
+    var signupBonusCoins: Int {
+        switch self {
+        case .free: 0
+        case .plus: 100
+        case .gold: 300
+        }
+    }
+}
+
 /// Lifecycle of a super-like request in the requests folder.
 /// Stored as a raw string on Conversation so the schema stays stable.
 enum RequestState: String, Codable {

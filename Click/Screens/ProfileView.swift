@@ -2,9 +2,10 @@
 //  ProfileView.swift
 //  Click
 //
-//  Identity, daily bingo, boosters, daily reward streak, referral. The
-//  paid surfaces (offers, subscription, coin store, challenges) were
-//  deliberately removed — do not reintroduce them without a decision.
+//  Identity, subscription, daily bingo, boosters, daily reward streak,
+//  referral. Monetization surfaces (coin store, subscription tiers) were
+//  added by owner decision on 12 Sep 2026 — but they are SIMULATED until
+//  a billing backend exists, and every surface says so.
 //
 
 import SwiftUI
@@ -26,6 +27,8 @@ struct ProfileView: View {
 
     @State private var showingSettings = false
     @State private var showingEditProfile = false
+    @State private var showingCoinStore = false
+    @State private var showingSubscription = false
     @State private var referralCode = ""
     @State private var referralFeedback: String?
     /// Bumped when coins are earned so the wallet coin spins.
@@ -49,6 +52,7 @@ struct ProfileView: View {
                 OverlappingSheet(ambient: true) {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
+                        subscriptionSection
                         bingoSection
                         dailyRewardsSection
                         boostersSection
@@ -68,6 +72,12 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingEditProfile) {
             EditProfileView()
+        }
+        .sheet(isPresented: $showingCoinStore) {
+            CoinStoreView(coinEarnTrigger: $coinEarnTrigger)
+        }
+        .sheet(isPresented: $showingSubscription) {
+            SubscriptionView(coinEarnTrigger: $coinEarnTrigger)
         }
         .task(id: me?.photos.count ?? 0) {
             myPhoto = me?.orderedPhotos.first.flatMap { UIImage(data: $0.data) }
@@ -110,9 +120,20 @@ struct ProfileView: View {
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
                         .animation(motion.numeric, value: wallet?.coins ?? 0)
+                    // The "+" opens the coin store.
+                    Button {
+                        showingCoinStore = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: showingCoinStore)
+                    }
+                    .buttonStyle(.clickQuiet)
+                    .accessibilityLabel("Get more coins")
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(wallet?.coins ?? 0) coins")
+                // .contain so the buy button stays reachable for VoiceOver.
+                .accessibilityElement(children: .contain)
 
                 GlassCircleButton(systemImage: "gearshape.fill", accessibilityTitle: "Settings") {
                     showingSettings = true
@@ -182,6 +203,57 @@ struct ProfileView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Subscription
+
+    /// The tier card right under the identity block: shows the current
+    /// tier and opens the upgrade page.
+    private var subscriptionSection: some View {
+        let tier = wallet?.subscriptionTier ?? .free
+        return Button {
+            showingSubscription = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: tier == .gold ? "crown.fill" : "sparkles")
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundStyle(tier == .gold ? Theme.coin : Theme.brandPink)
+                    .symbolEffect(.bounce, value: showingSubscription)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tier.label)
+                        .font(.click(.headline, weight: .black))
+                        .foregroundStyle(Theme.primary)
+                        .contentTransition(.opacity)
+                    Text(
+                        tier == .free
+                            ? "upgrade for more super likes, coins and boosts"
+                            : "your perks are active - tap to manage"
+                    )
+                    .font(.clickPlain(.footnote, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                }
+
+                Spacer(minLength: 4)
+
+                Text(tier == .free ? "upgrade" : "manage")
+                    .font(.click(.subheadline, weight: .black))
+                    .foregroundStyle(Theme.onPrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Theme.primary, in: Capsule())
+            }
+            .padding(Theme.Metric.gutter)
+            .cardSurface(radius: Theme.Metric.card, elevated: true)
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous)
+                    .strokeBorder(Theme.brandGradient, lineWidth: tier == .free ? 1 : 2)
+            }
+        }
+        .buttonStyle(.click)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .animation(motion.state, value: tier)
+        .accessibilityLabel("Subscription: \(tier.label). \(tier == .free ? "Upgrade" : "Manage") your tier.")
     }
 
     // MARK: - Bingo
