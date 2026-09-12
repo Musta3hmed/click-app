@@ -71,6 +71,10 @@ final class Wallet {
     /// Simulated subscription (no real billing). Declared default keeps
     /// lightweight migration working.
     var subscriptionTierRaw: String = SubscriptionTier.free.rawValue
+    /// Simulated recurring benefits: monthly coin bonus (plus/gold) and
+    /// the weekly free boost (gold).
+    var lastMonthlyBonusAt: Date? = nil
+    var lastWeeklyBoostAt: Date? = nil
 
     init(id: String = "primary", coins: Int = 0) {
         self.id = id

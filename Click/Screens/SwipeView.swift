@@ -25,6 +25,7 @@ import SwiftData
 struct SwipeView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.motion) private var motion
+    @Environment(ChromeState.self) private var chrome
 
     @Query(
         filter: #Predicate<UserProfile> { !$0.isCurrentUser && !$0.isBlocked },
@@ -586,12 +587,24 @@ struct SwipeView: View {
         if let profile = celebrating {
             MatchCelebrationView(
                 profile: profile,
-                myName: me?.name ?? "you"
-            ) {
-                withAnimation(motion.celebrateOut) {
-                    celebrating = nil
+                myName: me?.name ?? "you",
+                onSayHi: {
+                    withAnimation(motion.celebrateOut) {
+                        celebrating = nil
+                    }
+                    // The mutual like created the conversation; jump
+                    // straight into it via the chats tab.
+                    if let conversation = conversations.first(where: { $0.participant?.id == profile.id }) {
+                        chrome.requestedConversationID = conversation.id
+                        chrome.requestedTab = .chats
+                    }
+                },
+                onDismiss: {
+                    withAnimation(motion.celebrateOut) {
+                        celebrating = nil
+                    }
                 }
-            }
+            )
             // The parent owns the entrance — the view no longer fights it
             // with its own onAppear spring.
             .transition(motion.takeover)
@@ -853,6 +866,7 @@ private extension CGFloat {
 private struct MatchCelebrationView: View {
     let profile: UserProfile
     let myName: String
+    let onSayHi: () -> Void
     let onDismiss: () -> Void
 
     @Environment(\.motion) private var motion
@@ -899,21 +913,37 @@ private struct MatchCelebrationView: View {
 
                 Spacer()
 
-                Button {
-                    onDismiss()
-                } label: {
-                    Text("keep swiping")
-                        .font(.click(.headline, weight: .heavy))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(.white, in: Capsule())
+                // "say hi" jumps into the new conversation; "keep
+                // swiping" stays in the deck.
+                VStack(spacing: 14) {
+                    Button {
+                        onSayHi()
+                    } label: {
+                        Text("say hi to \(profile.name.split(separator: " ").first.map(String.init) ?? profile.name)")
+                            .font(.click(.headline, weight: .heavy))
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(.white, in: Capsule())
+                    }
+                    .buttonStyle(.click)
+                    .accessibilityLabel("Say hi to \(profile.name)")
+
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Text("keep swiping")
+                            .font(.click(.headline, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.clickSilent)
+                    .accessibilityLabel("Keep swiping")
                 }
-                .buttonStyle(.click)
                 .padding(.horizontal, 32)
-                .padding(.bottom, 40)
+                .padding(.bottom, 32)
                 .opacity(stage >= 3 ? 1 : 0)
-                .accessibilityLabel("Keep swiping")
             }
         }
         .task {
@@ -1318,5 +1348,6 @@ private struct DeckExhaustedState: View {
 
 #Preview {
     SwipeView()
+        .environment(ChromeState())
         .modelContainer(MockData.previewContainer)
 }

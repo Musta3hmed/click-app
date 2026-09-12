@@ -64,6 +64,11 @@ struct ChatsView: View {
             // bar so its inset doesn't push the header band lower than on
             // the other two tabs. ConversationView gets its bar back.
             .toolbar(.hidden, for: .navigationBar)
+            // The celebration's "say hi" lands here after the tab switch.
+            .onAppear { openRequestedConversation() }
+            .onChange(of: chrome.requestedConversationID) { _, _ in
+                openRequestedConversation()
+            }
             .navigationDestination(for: Conversation.self) { conversation in
                 // Reduce Motion gets the standard push instead of the zoom.
                 if motion.reduceMotion {
@@ -90,6 +95,13 @@ struct ChatsView: View {
                 Text("The request and its message are removed. This can't be undone.")
             }
         }
+    }
+
+    private func openRequestedConversation() {
+        guard let id = chrome.requestedConversationID,
+              let conversation = conversations.first(where: { $0.id == id }) else { return }
+        chrome.requestedConversationID = nil
+        path.append(conversation)
     }
 
     /// Tab writes go through here so the list slide knows its direction.

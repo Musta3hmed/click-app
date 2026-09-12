@@ -196,6 +196,15 @@ struct ProfileView: View {
                 Label("\(wallet?.profileViews ?? 0) views", systemImage: "eye.fill")
                     .font(.clickPlain(.footnote, weight: .semibold))
                     .foregroundStyle(Theme.secondary)
+
+                // The gold tier's profile badge — a wired benefit.
+                if wallet?.subscriptionTier == .gold {
+                    Label("gold", systemImage: "crown.fill")
+                        .font(.click(.footnote, weight: .heavy))
+                        .foregroundStyle(Theme.coin)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("click gold member")
+                }
             }
 
             PillButton(title: "edit profile") {

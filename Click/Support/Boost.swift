@@ -59,10 +59,41 @@ enum Boost {
         let wallet = Wallet.ensure(in: context)
         wallet.profileViews += boosted ? Int.random(in: 5...10) : Int.random(in: 1...3)
 
+        grantSubscriptionBenefits(to: wallet, in: context)
+
         if boosted {
             seedBoostRequestIfRoom(for: me, in: context)
         }
         try? context.save()
+    }
+
+    /// Simulated recurring subscription benefits: monthly bonus coins on
+    /// plus/gold, plus a weekly free boost on gold. Idempotent per window.
+    private static func grantSubscriptionBenefits(to wallet: Wallet, in context: ModelContext) {
+        let tier = wallet.subscriptionTier
+        guard tier != .free else { return }
+        let now = Date.now
+
+        let month: TimeInterval = 30 * 24 * 60 * 60
+        if let last = wallet.lastMonthlyBonusAt {
+            if now.timeIntervalSince(last) >= month {
+                wallet.coins += tier.signupBonusCoins
+                wallet.lastMonthlyBonusAt = now
+            }
+        } else {
+            // Anchor the window at upgrade time (the sign-up bonus already
+            // covered this month).
+            wallet.lastMonthlyBonusAt = now
+        }
+
+        if tier == .gold {
+            let week: TimeInterval = 7 * 24 * 60 * 60
+            let due = wallet.lastWeeklyBoostAt.map { now.timeIntervalSince($0) >= week } ?? true
+            if due {
+                BoosterInventory.ensure(.boost, in: context).count += 1
+                wallet.lastWeeklyBoostAt = now
+            }
+        }
     }
 
     /// At most 2 pending requests whose activity falls inside the current
