@@ -74,6 +74,13 @@ struct CardDeck: View {
                             // Back cards are visual context only — VoiceOver
                             // must not read three profiles at once.
                             .accessibilityHidden(offset != 0)
+                            // Instant insert/remove. The default removal
+                            // transition faded the swiped card out AFTER the
+                            // drag offset reset — so the previous profile
+                            // flashed back at the centre of the deck on
+                            // every swipe. It is already off-screen and at
+                            // opacity 0 when it leaves; nothing to animate.
+                            .transition(.identity)
                     }
                 }
             }
