@@ -40,6 +40,8 @@ struct ProfileView: View {
     @State private var coinEarnTrigger = 0
     @State private var insufficientCoinsMessage: String?
     @State private var milestoneMessage: String?
+    /// One-shot race-car flourish when a boost is activated (5.1).
+    @State private var boostCarTrigger = 0
     /// Decoded once, not per body evaluation.
     @State private var myPhoto: UIImage?
     /// Scroll-driven header collapse, 0 → 1 over the first 56pt of scroll.
@@ -88,6 +90,15 @@ struct ProfileView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
+        // Off the OUTERMOST stack, never inside the ScrollView. Omitted
+        // from the hierarchy entirely under Reduce Motion — a car
+        // crossing the screen is the textbook vestibular trigger, and
+        // BoostBadge + the success haptic already carry the confirmation.
+        .overlay {
+            if !motion.reduceMotion {
+                RaceCarOverlay(trigger: boostCarTrigger)
+            }
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
@@ -553,6 +564,7 @@ struct ProfileView: View {
         guard let me else { return }
         if Boost.activate(for: me, in: context) {
             Haptics.notify(.success)
+            boostCarTrigger += 1
             // A real event that will really happen: the expiry.
             if let until = me.boostedUntil {
                 NotificationService.scheduleBoostExpiry(at: until)
@@ -868,6 +880,56 @@ private struct DailyRewardCard: View {
     private var iconColor: Color {
         if reward.isClaimed || !isActive { return Theme.secondary.opacity(0.6) }
         return reward.coinValue > 0 ? Theme.coin : Theme.accent
+    }
+}
+
+// MARK: - Race car (MEGA-BRIEF 5.1)
+
+/// One-shot flourish when a boost activates, copying the FlyingCoin
+/// precedent: keyframeAnimator with cubic tracks, always in the
+/// hierarchy at opacity 0, hit-testing off, hidden from VoiceOver.
+/// The parent omits it entirely under Reduce Motion.
+private struct RaceCarOverlay: View {
+    let trigger: Int
+
+    private struct CarState {
+        var progress: CGFloat = -0.25   // fraction of screen width
+        var bounce: CGFloat = 0
+        var opacity: Double = 0
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            Image(systemName: "car.side.fill")
+                .font(.system(size: 40, weight: .bold))
+                .foregroundStyle(Theme.brandViolet)
+                .keyframeAnimator(initialValue: CarState(), trigger: trigger) { view, state in
+                    view
+                        .offset(
+                            x: state.progress * (geo.size.width + 120) - 60,
+                            y: geo.size.height - 180 + state.bounce
+                        )
+                        .opacity(trigger == 0 ? 0 : state.opacity)
+                } keyframes: { _ in
+                    KeyframeTrack(\.progress) {
+                        CubicKeyframe(-0.25, duration: 0.01)
+                        CubicKeyframe(1.25, duration: 0.9)
+                    }
+                    KeyframeTrack(\.bounce) {
+                        CubicKeyframe(0, duration: 0.01)
+                        CubicKeyframe(-6, duration: 0.3)
+                        CubicKeyframe(2, duration: 0.3)
+                        CubicKeyframe(0, duration: 0.3)
+                    }
+                    KeyframeTrack(\.opacity) {
+                        CubicKeyframe(1, duration: 0.01)
+                        CubicKeyframe(1, duration: 0.75)
+                        CubicKeyframe(0, duration: 0.15)
+                    }
+                }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
