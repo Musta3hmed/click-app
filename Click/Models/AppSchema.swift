@@ -20,6 +20,7 @@ enum AppSchema {
         Wallet.self,
         BingoBoard.self,
         Community.self,
-        CommunityMembership.self
+        CommunityMembership.self,
+        SentLike.self
     ]
 }

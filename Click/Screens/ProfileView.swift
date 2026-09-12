@@ -140,6 +140,12 @@ struct ProfileView: View {
                     Text((wallet?.coins ?? 0).formatted())
                         .font(.click(.subheadline, weight: .heavy))
                         .foregroundStyle(.white)
+                        // Scale, never wrap: "21,680" used to break into
+                        // "21,68" / "0" inside the capsule. NOT
+                        // .fixedSize() — that modifier centre-clipped the
+                        // whole app twice already.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .contentTransition(.numericText())
                         .animation(motion.numeric, value: wallet?.coins ?? 0)
                     // The "+" opens the coin store.
@@ -218,9 +224,11 @@ struct ProfileView: View {
             }
 
             HStack(spacing: 16) {
-                Label("\(wallet?.profileViews ?? 0) views", systemImage: "eye.fill")
+                // Simulated, and labelled as such (MEGA-BRIEF 0.3).
+                Label("\(wallet?.profileViews ?? 0) views · simulated", systemImage: "eye.fill")
                     .font(.clickPlain(.footnote, weight: .semibold))
                     .foregroundStyle(Theme.secondary)
+                    .accessibilityLabel("\(wallet?.profileViews ?? 0) simulated profile views")
 
                 // The gold tier's profile badge — a wired benefit.
                 if wallet?.subscriptionTier == .gold {

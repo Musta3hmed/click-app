@@ -32,6 +32,9 @@ enum AccountEraser {
         for match in (try? context.fetch(FetchDescriptor<Match>())) ?? [] {
             context.delete(match)
         }
+        for like in (try? context.fetch(FetchDescriptor<SentLike>())) ?? [] {
+            context.delete(like)
+        }
         for wallet in (try? context.fetch(FetchDescriptor<Wallet>())) ?? [] {
             context.delete(wallet)
         }

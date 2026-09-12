@@ -102,6 +102,7 @@ struct ClickModelTests {
         context.insert(me)
         context.insert(ProfilePhoto(data: Data([0x01]), sortIndex: 0, owner: me))
         context.insert(Match(profile: me))
+        context.insert(SentLike(profile: me))
         context.insert(Wallet(coins: 50))
 
         // Community traces: a membership and a user-created community.
@@ -131,6 +132,7 @@ struct ClickModelTests {
         #expect(try context.fetchCount(FetchDescriptor<Conversation>()) == 0)
         #expect(try context.fetchCount(FetchDescriptor<Message>()) == 0)
         #expect(try context.fetchCount(FetchDescriptor<Match>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<SentLike>()) == 0)
         #expect(try context.fetchCount(FetchDescriptor<Wallet>()) == 0)
         // Candidates are demo content and must survive.
         let candidates = FetchDescriptor<UserProfile>(predicate: #Predicate { !$0.isCurrentUser })

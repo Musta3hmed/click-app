@@ -20,6 +20,9 @@ struct ChatsView: View {
     @Query(sort: \Match.matchedAt, order: .reverse)
     private var matches: [Match]
 
+    @Query(sort: \SentLike.sentAt, order: .reverse)
+    private var sentLikes: [SentLike]
+
     @Query(filter: #Predicate<UserProfile> { !$0.isCurrentUser && !$0.isBlocked })
     private var candidates: [UserProfile]
 
@@ -193,7 +196,7 @@ struct ChatsView: View {
                 conversationList
             }
         case .topPicks:
-            if visibleMatches.isEmpty {
+            if visibleMatches.isEmpty && visibleSentLikes.isEmpty {
                 emptyState
             } else {
                 matchesList
@@ -241,8 +244,10 @@ struct ChatsView: View {
 
     // MARK: - Matches (every Match row finally lands somewhere visible)
 
+    /// Mutual matches first, then outgoing likes labelled honestly —
+    /// a one-way like is never presented as "it clicked" (MEGA-BRIEF 0.1).
     private var matchesList: some View {
-        LazyVStack(spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(visibleMatches, id: \.id) { match in
                 if let profile = match.profile {
                     Button {
@@ -257,6 +262,26 @@ struct ChatsView: View {
                         .padding(.leading, 84)
                 }
             }
+
+            if !visibleSentLikes.isEmpty {
+                Text("liked — no answer yet")
+                    .font(.click(.footnote, weight: .heavy))
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, Theme.Metric.gutter)
+                    .padding(.top, 20)
+                    .padding(.bottom, 4)
+                    .accessibilityAddTraits(.isHeader)
+
+                ForEach(visibleSentLikes, id: \.id) { like in
+                    if let profile = like.profile {
+                        SentLikeRow(like: like, profile: profile)
+
+                        Divider()
+                            .overlay(Theme.separator)
+                            .padding(.leading, 84)
+                    }
+                }
+            }
         }
         .padding(.top, 8)
         .tabBarClearance()
@@ -267,6 +292,17 @@ struct ChatsView: View {
         var seen = Set<UUID>()
         return matches.filter { match in
             guard let profile = match.profile, !profile.isBlocked, !profile.isCurrentUser else { return false }
+            return seen.insert(profile.id).inserted
+        }
+    }
+
+    /// Outgoing likes that never became mutual (matched profiles drop out).
+    private var visibleSentLikes: [SentLike] {
+        let matchedIDs = Set(visibleMatches.compactMap { $0.profile?.id })
+        var seen = Set<UUID>()
+        return sentLikes.filter { like in
+            guard let profile = like.profile, !profile.isBlocked, !profile.isCurrentUser,
+                  !matchedIDs.contains(profile.id) else { return false }
             return seen.insert(profile.id).inserted
         }
     }
@@ -301,14 +337,20 @@ struct ChatsView: View {
                 .font(.click(.headline, weight: .heavy))
                 .foregroundStyle(Theme.primary)
 
+            // Same labelling rule as the paid surfaces: this number is
+            // SIMULATED, and no copy may claim real reach.
             Text(
                 me?.isBoosted == true
-                    ? "boost active — your profile is getting around."
-                    : "use a boost to put your profile in front of more people."
+                    ? "boost active — simulated views tick faster."
+                    : "simulated — Click has no backend yet, so nobody is really viewing."
             )
             .font(.clickPlain(.subheadline, weight: .medium))
             .foregroundStyle(Theme.secondary)
             .multilineTextAlignment(.center)
+
+            Text("demo · no real reach")
+                .font(.clickPlain(.caption, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 48)
@@ -598,6 +640,19 @@ private struct MatchRow: View {
                 size: 56,
                 isOnline: match.profile?.isOnline ?? false
             )
+            // Super likes leave a durable trace (MEGA-BRIEF 4.6):
+            // Match.isSuperChat finally gets read.
+            .overlay(alignment: .bottomTrailing) {
+                if match.isSuperChat {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(Circle().fill(Theme.brandViolet))
+                        .offset(x: 3, y: 3)
+                        .accessibilityLabel("Super like")
+                }
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(match.profile?.name ?? "Unknown")
@@ -620,6 +675,49 @@ private struct MatchRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(match.profile?.name ?? "Unknown"), matched \(match.matchedAt.formatted(.relative(presentation: .named))). Opens the conversation.")
+    }
+}
+
+/// "liked — no answer yet": honest, not tappable into a fake thread.
+private struct SentLikeRow: View {
+    let like: SentLike
+    let profile: UserProfile
+
+    var body: some View {
+        HStack(spacing: 12) {
+            StickerAvatar(name: profile.name, size: 56, isOnline: profile.isOnline)
+                .overlay(alignment: .bottomTrailing) {
+                    if like.isSuperLike {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .padding(4)
+                            .background(Circle().fill(Theme.brandViolet))
+                            .offset(x: 3, y: 3)
+                            .accessibilityLabel("Super like")
+                    }
+                }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(profile.name)
+                    .font(.click(.headline, weight: .heavy))
+                    .foregroundStyle(Theme.primary)
+                Text("liked \(like.sentAt.formatted(.relative(presentation: .named))) — no answer yet")
+                    .font(.clickPlain(.subheadline, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+            }
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "heart.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, Theme.Metric.gutter)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(profile.name), liked \(like.sentAt.formatted(.relative(presentation: .named))), no answer yet")
     }
 }
 

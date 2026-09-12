@@ -28,15 +28,23 @@ struct BingoView: View {
     @State private var coinFlight = 0
     @State private var claimedBounce = 0
 
-    static let claimPrice = 25
+    /// 25 -> 35 (MEGA-BRIEF 0.8): the pool's expected value is ~36.7
+    /// coins plus a booster, so at 25 the only sink was a fountain and
+    /// coins inflated forever. ~Neutral now; boosters stay the upside.
+    /// The 50-coin welcome bonus still affords a day-1 claim.
+    static let claimPrice = 35
     static let picksAllowed = 3
 
     private var todayKey: String {
         Self.dateKey(for: .now)
     }
 
+    /// Today's board — or, after a clock rollback, the newest
+    /// future-dated one. Serving a fresh board while a claimed one sits
+    /// at a future date was an unbounded coin printer (MEGA-BRIEF 0.7).
     private var board: BingoBoard? {
         boards.first { $0.dateKey == todayKey }
+            ?? boards.filter { $0.dateKey > todayKey }.max { $0.dateKey < $1.dateKey }
     }
 
     private var wallet: Wallet? { wallets.first }
@@ -226,17 +234,36 @@ struct BingoView: View {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
+        // Explicit, not implicit: the day boundary follows the device's
+        // current zone by DESIGN, stated here (MEGA-BRIEF 0.7).
+        formatter.timeZone = .current
         return formatter.string(from: date)
     }
 
+    /// Salted per install: the seed used to be a hash of the date string
+    /// alone, so every user got the identical board and one forum post
+    /// turned a blind pick into a guaranteed payout (MEGA-BRIEF 0.7).
+    static var installSalt: UInt64 {
+        let defaults = UserDefaults.standard
+        if let stored = defaults.object(forKey: DefaultsKey.bingoSeedSalt) as? String,
+           let value = UInt64(stored) {
+            return value
+        }
+        let fresh = UInt64.random(in: UInt64.min...UInt64.max)
+        defaults.set(String(fresh), forKey: DefaultsKey.bingoSeedSalt)
+        return fresh
+    }
+
     private static func seed(for dateKey: String) -> UInt64 {
-        dateKey.unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }
+        let dateHash = dateKey.unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }
+        return dateHash ^ installSalt
     }
 
     private func ensureBoard() {
-        // Yesterday's boards are dead weight — prune them so the table
-        // doesn't grow forever.
-        for stale in boards where stale.dateKey != todayKey {
+        // Prune only boards strictly OLDER than today. A claimed board at
+        // a future date (clock rolled back) must survive — deleting claim
+        // state on key mismatch was the unbounded coin printer.
+        for stale in boards where stale.dateKey < todayKey {
             context.delete(stale)
         }
         guard board == nil else {
@@ -336,6 +363,13 @@ private struct BingoTile: View {
                 .font(.system(size: 24, weight: .black))
                 .foregroundStyle(.white)
         }
+        // Same 1pt hairline as the revealed face so the grid reads as one
+        // even surface — only revealed tiles had a border before, which
+        // made the board look uneven (MEGA-BRIEF 2.3).
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
+                .strokeBorder(Theme.glowStroke, lineWidth: 1)
+        }
     }
 
     private var revealedFace: some View {
@@ -362,8 +396,9 @@ private struct BingoTile: View {
             .padding(4)
         }
         .overlay {
+            // 1pt tempered stroke, not the 2pt full-saturation fringe.
             RoundedRectangle(cornerRadius: Theme.Metric.tile, style: .continuous)
-                .strokeBorder(Theme.brandPink, lineWidth: 2)
+                .strokeBorder(Theme.brandPink.opacity(0.7), lineWidth: 1)
         }
     }
 

@@ -40,4 +40,8 @@ enum DefaultsKey {
     // them via CommunityService.eraseUserCreated).
     static let communityJoinsDay = "communityJoinsDay"
     static let communityJoinsCount = "communityJoinsCount"
+
+    /// Per-install bingo seed salt (anti-cheat, MEGA-BRIEF 0.7). Install
+    /// metadata, not account data — AccountEraser leaves it alone.
+    static let bingoSeedSalt = "bingoSeedSalt"
 }

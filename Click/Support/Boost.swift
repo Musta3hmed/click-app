@@ -4,9 +4,11 @@
 //
 //  Boost is an HONEST local simulation — there is no backend, so copy must
 //  never claim real reach ("boost active - 24m left", not "more people see
-//  you"). While boosted: the mock likes-you-back rate widens, the
-//  profile-view counter ticks faster, and up to two extra super-like
-//  requests can arrive.
+//  you"). While boosted: the mock likes-you-back rate widens and the
+//  SIMULATED profile-view counter ticks faster (every surface showing it
+//  says simulated). Fabricated admirers are gone: seeding fake super-like
+//  requests during a boost taught users that spending produces attention,
+//  which is the harmful version of a demo — do not reintroduce it.
 //
 
 import Foundation
@@ -41,9 +43,8 @@ enum Boost {
     }
 
     /// Runs when the app comes to the foreground: ticks the simulated
-    /// profile-view counter (faster while boosted) and, while boosted,
-    /// seeds up to 2 extra pending super-like requests from candidates
-    /// the user has no conversation with (blocked/seeking respected).
+    /// profile-view counter (faster while boosted) and rotates the demo
+    /// deck's online indicators.
     static func foregroundTick(in context: ModelContext) {
         let currentUsers = (try? context.fetch(
             FetchDescriptor<UserProfile>(predicate: #Predicate { $0.isCurrentUser })
@@ -60,11 +61,21 @@ enum Boost {
         wallet.profileViews += boosted ? Int.random(in: 5...10) : Int.random(in: 1...3)
 
         grantSubscriptionBenefits(to: wallet, in: context)
-
-        if boosted {
-            seedBoostRequestIfRoom(for: me, in: context)
-        }
+        rotateOnlineStatus(in: context)
         try? context.save()
+    }
+
+    /// The seeded flag was assigned once and never changed — a third of
+    /// the deck showed a green dot at 4am, forever. Deterministic per
+    /// profile per hour: still demo data, but it breathes.
+    private static func rotateOnlineStatus(in context: ModelContext) {
+        let hourKey = Int(Date.now.timeIntervalSince1970 / 3600)
+        let candidates = (try? context.fetch(FetchDescriptor<UserProfile>(
+            predicate: #Predicate { !$0.isCurrentUser }
+        ))) ?? []
+        for candidate in candidates {
+            candidate.isOnline = Theme.stableHash("\(candidate.name)#\(hourKey)") % 3 == 0
+        }
     }
 
     /// Simulated recurring subscription benefits: monthly bonus coins on
@@ -96,51 +107,4 @@ enum Boost {
         }
     }
 
-    /// At most 2 pending requests whose activity falls inside the current
-    /// boost window.
-    private static func seedBoostRequestIfRoom(for me: UserProfile, in context: ModelContext) {
-        guard let until = me.boostedUntil else { return }
-        let windowStart = until.addingTimeInterval(-2 * duration)
-
-        let pendingRaw = RequestState.pending.rawValue
-        let pending = (try? context.fetch(FetchDescriptor<Conversation>(
-            predicate: #Predicate { $0.requestStateRaw == pendingRaw }
-        ))) ?? []
-        guard pending.filter({ $0.lastActivity >= windowStart }).count < 2 else { return }
-
-        let candidates = (try? context.fetch(FetchDescriptor<UserProfile>(
-            predicate: #Predicate { !$0.isCurrentUser && !$0.isBlocked }
-        ))) ?? []
-        let conversations = (try? context.fetch(FetchDescriptor<Conversation>())) ?? []
-        let taken = Set(conversations.compactMap { $0.participant?.id })
-
-        let seeking = me.seeking
-        let eligible = candidates.filter { candidate in
-            guard !taken.contains(candidate.id) else { return false }
-            guard !seeking.isEmpty, !seeking.contains(.everyone) else { return true }
-            guard let gender = candidate.gender else { return false }
-            return seeking.contains { $0.includes(gender) }
-        }
-        guard let profile = eligible.randomElement() else { return }
-
-        let openers = [
-            "saw you pop up and had to say hi",
-            "ok your profile is my whole vibe",
-            "this felt worth a super like"
-        ]
-        let conversation = Conversation(
-            participant: profile,
-            folder: .requests,
-            lastActivity: .now,
-            unreadCount: 1,
-            isSuperLike: true,
-            requestState: .pending
-        )
-        context.insert(conversation)
-        context.insert(Message(
-            text: openers.randomElement() ?? openers[0],
-            isFromMe: false,
-            conversation: conversation
-        ))
-    }
 }
