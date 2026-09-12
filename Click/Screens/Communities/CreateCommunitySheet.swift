@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CreateCommunitySheet: View {
     @Environment(\.dismiss) private var dismiss
