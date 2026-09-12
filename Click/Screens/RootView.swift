@@ -21,6 +21,9 @@ struct RootView: View {
     /// Non-blocking welcome-back banner after >= 48h away (MEGA-BRIEF
     /// 4.5) — what's waiting, never an interstitial, never guilt.
     @State private var returnSummary: String?
+    /// The once-per-event popup (3.4) and the wheel it opens.
+    @State private var popupEvent: EventDefinition?
+    @State private var wheelEvent: EventDefinition?
     /// The launch logo carries into WelcomeView — same mark, free continuity.
     @Namespace private var logoNamespace
 
@@ -105,6 +108,8 @@ struct RootView: View {
             // derived from canonical interest ids.
             CommunityService.seedIfNeeded(context)
             Boost.foregroundTick(in: context)
+            EventService.grantDailyEntryIfDue(in: context)
+            presentEventPopupIfDue()
             checkReturnGap()
             await DemoPhotos.seedIfNeeded(context)
         }
@@ -112,6 +117,7 @@ struct RootView: View {
             switch phase {
             case .active:
                 Boost.foregroundTick(in: context)
+                EventService.grantDailyEntryIfDue(in: context)
                 checkReturnGap()
                 // They're here — a "you have unread" reminder is moot.
                 NotificationService.cancelUnreadDigest()
@@ -122,6 +128,21 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) { returnBanner }
+        // Dismissible by button AND by swipe (it's a sheet), once per
+        // event id. No countdown pressure, no "don't miss out".
+        .sheet(item: $popupEvent) { event in
+            EventPopupView(
+                event: event,
+                onOpenWheel: {
+                    popupEvent = nil
+                    wheelEvent = event
+                },
+                onDismiss: { popupEvent = nil }
+            )
+        }
+        .sheet(item: $wheelEvent) { event in
+            EventWheelView(event: event)
+        }
         // Full-screen: a brand takeover inside a sheet's rounded card with
         // a grabber was a register mismatch.
         .fullScreenCover(isPresented: welcomeSheetBinding) {
@@ -149,6 +170,16 @@ struct RootView: View {
 
     private var currentUserName: String {
         currentUsers.first { !$0.isDeleted }?.name ?? ""
+    }
+
+    /// Once per event id, on the first foreground while it is live.
+    private func presentEventPopupIfDue() {
+        guard onboardingCompleted, let event = EventService.activeEvent() else { return }
+        let progress = EventService.progress(for: event, in: context)
+        guard !progress.popupShown else { return }
+        progress.popupShown = true
+        try? context.save()
+        popupEvent = event
     }
 
     /// Backgrounding with real unread messages from an identified sender

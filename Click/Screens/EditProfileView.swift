@@ -345,6 +345,7 @@ struct ProfileCardPreview: View {
     let profile: UserProfile
 
     @Environment(\.dismiss) private var dismiss
+    @Query private var wallets: [Wallet]
 
     var body: some View {
         VStack(spacing: 16) {
@@ -361,6 +362,15 @@ struct ProfileCardPreview: View {
                 let width = min(geo.size.width, geo.size.height * 0.72)
                 let height = min(geo.size.height, width / 0.72)
                 SwipeCard(profile: profile)
+                    // Equipped card frame (cosmetic — earned, never
+                    // bought, never visibility).
+                    .overlay {
+                        if let frameID = wallets.first?.equippedCardFrame {
+                            RoundedRectangle(cornerRadius: Theme.Metric.card, style: .continuous)
+                                .strokeBorder(CosmeticCatalog.tint(frameID), lineWidth: 3)
+                                .accessibilityHidden(true)
+                        }
+                    }
                     .frame(width: width, height: height)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

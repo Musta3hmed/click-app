@@ -62,6 +62,12 @@ struct ProfileView: View {
                         identityBlock
                         communitiesSection
                         subscriptionSection
+                        if let event = EventService.activeEvent() {
+                            eventSection(event)
+                        }
+                        if !(wallet?.ownedCosmetics.isEmpty ?? true) {
+                            cosmeticsSection
+                        }
                         bingoSection
                         dailyRewardsSection
                         boostersSection
@@ -204,6 +210,15 @@ struct ProfileView: View {
                 isVerified: me?.isVerified ?? false,
                 photo: myPhoto
             )
+            // Equipped avatar ring (cosmetic — earned, never bought).
+            .overlay {
+                if let ringID = wallet?.equippedAvatarRing {
+                    Circle()
+                        .strokeBorder(CosmeticCatalog.tint(ringID), lineWidth: 3)
+                        .frame(width: Self.avatarSize + 10, height: Self.avatarSize + 10)
+                        .accessibilityHidden(true)
+                }
+            }
 
             HStack(spacing: 8) {
                 CountryBadge(code: me?.countryCode)
@@ -390,6 +405,102 @@ struct ProfileView: View {
         .accessibilityLabel("Subscription: \(tier.label). \(tier == .free ? "Upgrade" : "Manage") your tier.")
     }
 
+    // MARK: - Event (MEGA-BRIEF P3)
+
+    @Query private var eventProgress: [EventProgress]
+    @State private var showingWheel = false
+
+    /// The brief's UI slot: between subscription and bingo, only while
+    /// an event is live.
+    private func eventSection(_ event: EventDefinition) -> some View {
+        Button {
+            showingWheel = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: event.symbolName)
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundStyle(CommunityService.tint(event.tintToken))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.title)
+                        .font(.click(.headline, weight: .heavy))
+                        .foregroundStyle(Theme.primary)
+                    let entries = eventProgress.first { $0.eventID == event.id }?.entries ?? 0
+                    Text("\(entries) free \(entries == 1 ? "entry" : "entries") — spin for cosmetics and boosters")
+                        .font(.clickPlain(.footnote, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.secondary)
+            }
+            .padding(16)
+            .cardSurface(radius: Theme.Metric.tile)
+        }
+        .buttonStyle(.clickQuiet)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .accessibilityLabel("\(event.title) event wheel")
+        .sheet(isPresented: $showingWheel) {
+            EventWheelView(event: event)
+        }
+    }
+
+    // MARK: - Cosmetics (earned only, never visibility)
+
+    private var cosmeticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("cosmetics")
+            Text("earned from events. tap to wear one.")
+                .font(.clickPlain(.footnote, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], alignment: .leading, spacing: 8) {
+                ForEach((wallet?.ownedCosmetics ?? []).compactMap { CosmeticCatalog.byID[$0] }) { cosmetic in
+                    cosmeticChip(cosmetic)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Metric.gutter)
+    }
+
+    private func cosmeticChip(_ cosmetic: Cosmetic) -> some View {
+        let isEquipped = wallet?.equippedCardFrame == cosmetic.id
+            || wallet?.equippedAvatarRing == cosmetic.id
+        return Button {
+            toggleCosmetic(cosmetic)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: cosmetic.symbolName)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(CosmeticCatalog.tint(cosmetic.id))
+                Text(cosmetic.label)
+                    .font(.click(.footnote, weight: .heavy))
+                    .foregroundStyle(isEquipped ? Theme.onPrimary : Theme.primary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(isEquipped ? Theme.primary : Theme.surface, in: Capsule())
+        }
+        .buttonStyle(.clickQuiet)
+        .accessibilityLabel("\(cosmetic.label), \(cosmetic.kind.label)")
+        .accessibilityAddTraits(isEquipped ? [.isSelected, .isButton] : .isButton)
+    }
+
+    private func toggleCosmetic(_ cosmetic: Cosmetic) {
+        let wallet = Wallet.ensure(in: context)
+        switch cosmetic.kind {
+        case .cardFrame:
+            wallet.equippedCardFrame = wallet.equippedCardFrame == cosmetic.id ? nil : cosmetic.id
+        case .avatarRing:
+            wallet.equippedAvatarRing = wallet.equippedAvatarRing == cosmetic.id ? nil : cosmetic.id
+        }
+        try? context.save()
+    }
+
     // MARK: - Bingo
 
     private var bingoSection: some View {
@@ -569,6 +680,8 @@ struct ProfileView: View {
         Haptics.notify(.success)
         // Tomorrow's reward is now a real thing that will be ready.
         NotificationService.scheduleDailyRewardReady()
+        // A genuine in-app action earns a wheel entry during an event.
+        EventService.grantActionEntry(in: context)
     }
 
     /// Named, non-random streak milestones (MEGA-BRIEF 4.3/4.4). Kept

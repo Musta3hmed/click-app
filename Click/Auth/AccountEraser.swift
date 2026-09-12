@@ -38,6 +38,7 @@ enum AccountEraser {
         for decision in (try? context.fetch(FetchDescriptor<SwipeDecision>())) ?? [] {
             context.delete(decision)
         }
+        EventService.eraseProgress(in: context)
         for wallet in (try? context.fetch(FetchDescriptor<Wallet>())) ?? [] {
             context.delete(wallet)
         }

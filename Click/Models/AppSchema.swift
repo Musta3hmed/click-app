@@ -22,6 +22,7 @@ enum AppSchema {
         Community.self,
         CommunityMembership.self,
         SentLike.self,
-        SwipeDecision.self
+        SwipeDecision.self,
+        EventProgress.self
     ]
 }
