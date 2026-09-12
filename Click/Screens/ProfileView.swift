@@ -173,7 +173,12 @@ struct ProfileView: View {
 
     private var identityBlock: some View {
         VStack(spacing: 12) {
-            // Half in the header, half in the sheet — a deliberate straddle.
+            // Sits fully inside the sheet. It used to straddle the header
+            // with a negative offset, but the header moved OUTSIDE the
+            // ScrollView (see `body`) and a ScrollView clips its content —
+            // so the offset pushed the top half of the avatar out of bounds
+            // and it rendered cut in half. Do not reintroduce the offset
+            // without also moving the avatar out of the scroll view.
             StickerAvatar(
                 name: me?.name ?? "You",
                 size: Self.avatarSize,
@@ -181,8 +186,6 @@ struct ProfileView: View {
                 isVerified: me?.isVerified ?? false,
                 photo: myPhoto
             )
-            .offset(y: -Self.avatarSize / 2 - Theme.Metric.sheetOverlap / 2)
-            .padding(.bottom, -(Self.avatarSize / 2 - 8) - Theme.Metric.sheetOverlap / 2)
 
             HStack(spacing: 8) {
                 CountryBadge(code: me?.countryCode)
