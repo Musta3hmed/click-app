@@ -36,6 +36,8 @@ struct ProfileView: View {
     @State private var insufficientCoinsMessage: String?
     /// Decoded once, not per body evaluation.
     @State private var myPhoto: UIImage?
+    /// Scroll-driven header collapse, 0 → 1 over the first 56pt of scroll.
+    @State private var headerCollapse: CGFloat = 0
 
     @Environment(\.motion) private var motion
 
@@ -49,7 +51,7 @@ struct ProfileView: View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                OverlappingSheet(ambient: true) {
+                OverlappingSheet(ambient: true, collapseProgress: headerCollapse) {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
                         subscriptionSection
@@ -64,6 +66,12 @@ struct ProfileView: View {
                 .tabBarClearance()
             }
             .scrollIndicators(.hidden)
+            // Drives the header collapse 1:1 with the finger.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                headerCollapse = min(max(offset / HeaderCollapse.distance, 0), 1)
+            }
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
@@ -111,7 +119,7 @@ struct ProfileView: View {
 
     private var header: some View {
         // A real title so all three tab headers share a baseline.
-        TexturedHeader(title: "profile", texture: .water) {
+        TexturedHeader(title: "profile", texture: .water, collapseProgress: headerCollapse) {
             HStack(spacing: 10) {
                 GlassCapsule {
                     CoinView(size: 20, earnTrigger: coinEarnTrigger)

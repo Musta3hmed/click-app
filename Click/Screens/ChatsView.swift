@@ -32,6 +32,8 @@ struct ChatsView: View {
     @State private var slideFromTrailing = true
     @State private var path = NavigationPath()
     @State private var denying: Conversation?
+    /// Scroll-driven header collapse, 0 → 1 over the first 56pt of scroll.
+    @State private var headerCollapse: CGFloat = 0
     @Namespace private var zoom
 
     private var me: UserProfile? { currentUsers.first { !$0.isDeleted } }
@@ -41,7 +43,7 @@ struct ChatsView: View {
             VStack(spacing: 0) {
                 header
 
-                OverlappingSheet(ambient: true) {
+                OverlappingSheet(ambient: true, collapseProgress: headerCollapse) {
                     VStack(spacing: 0) {
                         FolderTabs(selection: folderSelection, badgedFolders: badgedFolders)
                             .padding(.top, 20)
@@ -54,6 +56,12 @@ struct ChatsView: View {
                                 .transition(.push(from: slideFromTrailing ? .trailing : .leading))
                         }
                         .scrollIndicators(.hidden)
+                        // Drives the header collapse 1:1 with the finger.
+                        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                            geometry.contentOffset.y + geometry.contentInsets.top
+                        } action: { _, offset in
+                            headerCollapse = min(max(offset / HeaderCollapse.distance, 0), 1)
+                        }
                         .animation(motion.state, value: folder)
                     }
                 }
@@ -121,7 +129,7 @@ struct ChatsView: View {
     // MARK: - Header
 
     private var header: some View {
-        TexturedHeader(title: "chats", texture: .clouds) {
+        TexturedHeader(title: "chats", texture: .clouds, collapseProgress: headerCollapse) {
             HStack(spacing: 10) {
                 // Real coin balance; taps through to the profile wallet.
                 Button {

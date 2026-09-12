@@ -17,9 +17,23 @@ enum HeaderTexture {
     case water
 }
 
+/// Geometry of the scroll-driven header collapse (M137). Non-generic so
+/// call sites don't have to specialise `TexturedHeader` to reach it.
+enum HeaderCollapse {
+    static let expandedHeight: CGFloat = 148
+    static let collapsedHeight: CGFloat = 92
+    /// The scroll distance that maps onto a full collapse.
+    static var distance: CGFloat { expandedHeight - collapsedHeight }
+}
+
 struct TexturedHeader<Trailing: View>: View {
     let title: String
     var texture: HeaderTexture = .clouds
+    /// Scroll-driven collapse, 0 (expanded, 148pt) → 1 (collapsed, 92pt).
+    /// Driven 1:1 by the finger via `onScrollGeometryChange` — never
+    /// wrapped in `withAnimation`, and guarded below so no implicit
+    /// animation can smooth it into lag.
+    var collapseProgress: CGFloat = 0
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -31,6 +45,9 @@ struct TexturedHeader<Trailing: View>: View {
                 .font(.click(.largeTitle, weight: .heavy))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                // 1 → 0.66, pinned to its baseline corner so the title
+                // shrinks in place instead of drifting.
+                .scaleEffect(1 - 0.34 * collapseProgress, anchor: .bottomLeading)
 
             Spacer(minLength: Theme.Metric.gutter)
 
@@ -39,7 +56,10 @@ struct TexturedHeader<Trailing: View>: View {
         .padding(.horizontal, Theme.Metric.gutter)
         .padding(.bottom, Theme.Metric.sheetOverlap + 12)
         .frame(maxWidth: .infinity, alignment: .bottomLeading)
-        .frame(height: 148, alignment: .bottom)
+        .frame(
+            height: HeaderCollapse.expandedHeight - HeaderCollapse.distance * collapseProgress,
+            alignment: .bottom
+        )
         .background {
             ZStack {
                 Theme.headerGradient
@@ -52,9 +72,15 @@ struct TexturedHeader<Trailing: View>: View {
                     }
                 }
                 .drawingGroup()
+                // Parallax at half the collapse rate.
+                .offset(y: -HeaderCollapse.distance * collapseProgress * 0.5)
             }
             .ignoresSafeArea(edges: .top)
         }
+        // Scroll-driven values are 1:1 with the finger: strip any implicit
+        // animation whenever the progress changes (and only then, so the
+        // trailing content keeps its own transitions).
+        .transaction(value: collapseProgress) { $0.animation = nil }
     }
 }
 
