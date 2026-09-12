@@ -224,7 +224,7 @@ struct DeckExhaustedState: View {
             Text("that's everyone")
                 .font(.click(.title2, weight: .heavy))
                 .foregroundStyle(Theme.primary)
-            Text("check back later, or loosen your filters.")
+            Text("you've seen everyone who matches — loosen your filters or start over.")
                 .font(.clickPlain(.subheadline, weight: .medium))
                 .foregroundStyle(Theme.secondary)
                 .multilineTextAlignment(.center)

@@ -153,18 +153,32 @@ struct SwipeCard: View {
                 .foregroundStyle(Theme.onImageSecondary)
                 .lineLimit(2)
 
+            if let line = InterestMatching.sharedLine(viewer, profile) {
+                Text(line)
+                    .font(.clickPlain(.caption, weight: .bold))
+                    .foregroundStyle(Theme.onImagePrimary)
+            }
+
             HStack(spacing: 6) {
                 CountryBadge(code: profile.countryCode, onDark: true)
                 Text(profile.zodiac.label)
                     .font(.clickPlain(.caption, weight: .semibold))
                     .foregroundStyle(Theme.onImageSecondary)
-                ForEach(profile.interests.prefix(3), id: \.self) { interest in
-                    Text(interest)
-                        .font(.clickPlain(.caption, weight: .semibold))
-                        .foregroundStyle(Theme.onImagePrimary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Theme.onImageFill))
+                // Shared interests first, then the rest, capped at 3.
+                ForEach(orderedChipIDs, id: \.self) { id in
+                    let isShared = sharedIDs.contains(id)
+                    HStack(spacing: 4) {
+                        if isShared, let symbol = InterestCatalog.symbolName(for: id) {
+                            Image(systemName: symbol)
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        Text(InterestCatalog.label(for: id))
+                            .font(.clickPlain(.caption, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.onImagePrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(isShared ? Theme.onImageFillStrong : Theme.onImageFill))
                 }
             }
         }
@@ -172,10 +186,32 @@ struct SwipeCard: View {
         // One merged element: without this, VoiceOver read every text twice
         // (once via children, once via a container label).
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(profile.name), \(profile.displayAge). \(profile.bio). "
-            + "\(profile.isVerified ? "Verified. " : "")Interests: \(profile.interests.prefix(3).joined(separator: ", "))"
-        )
+        .accessibilityLabel(cardAccessibilityLabel)
+    }
+
+    /// Shared interests first, then the rest, capped at what the card shows.
+    private var orderedChipIDs: [String] {
+        let shared = profile.interests.filter { sharedIDs.contains($0) }
+        let rest = profile.interests.filter { !sharedIDs.contains($0) }
+        return Array((shared + rest).prefix(InterestCatalog.shownOnCard))
+    }
+
+    private var sharedIDs: Set<String> {
+        Set(InterestMatching.shared(viewer, profile).map(\.id))
+    }
+
+    private var cardAccessibilityLabel: String {
+        var label = "\(profile.name), \(profile.displayAge). \(profile.bio). "
+        if profile.isVerified { label += "Verified. " }
+        let sharedLabels = InterestMatching.shared(viewer, profile).map(\.label)
+        if !sharedLabels.isEmpty {
+            label += "\(sharedLabels.count) shared interest\(sharedLabels.count == 1 ? "" : "s"): \(sharedLabels.joined(separator: ", ")). "
+        }
+        let others = orderedChipIDs.filter { !sharedIDs.contains($0) }.map { InterestCatalog.label(for: $0) }
+        if !others.isEmpty {
+            label += "Interests: \(others.joined(separator: ", "))"
+        }
+        return label
     }
 
     /// Stories-style progress: one sliding capsule over dimmed track

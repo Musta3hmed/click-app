@@ -69,6 +69,7 @@ struct SwipeView: View {
     @AppStorage(DefaultsKey.filterMaxAge) private var filterMaxAge = 99
     @AppStorage(DefaultsKey.filterVerifiedOnly) private var filterVerifiedOnly = false
     @AppStorage(DefaultsKey.filterInterests) private var filterInterestsRaw = ""
+    @AppStorage(DefaultsKey.filterInterestsMatchAll) private var filterMatchAll = false
 
     private var me: UserProfile? { currentUsers.first { !$0.isDeleted } }
 
@@ -78,6 +79,9 @@ struct SwipeView: View {
 
             OverlappingSheet(ambient: true) {
                 VStack(spacing: 14) {
+                    if filtersFellBack {
+                        fallbackBanner
+                    }
                     CardDeck(
                         cards: Array(remaining.prefix(3)),
                         viewer: me,
@@ -163,26 +167,67 @@ struct SwipeView: View {
 
     // MARK: - Deck contents
 
-    /// Seeking + filter sheet criteria. Profiles with no/undisclosed gender
-    /// only appear for users open to everyone.
-    private var deck: [UserProfile] {
-        let seeking = me?.seeking ?? []
-        let interests = Set(filterInterestsRaw.split(separator: ",").map(String.init))
-        return candidates.filter { profile in
-            if !seeking.isEmpty && !seeking.contains(.everyone) {
-                guard let gender = profile.gender,
-                      seeking.contains(where: { $0.includes(gender) }) else { return false }
-            }
-            let age = profile.displayAge
-            guard age >= filterMinAge, age <= filterMaxAge else { return false }
-            if filterVerifiedOnly && !profile.isVerified { return false }
-            if !interests.isEmpty && Set(profile.interests).isDisjoint(with: interests) { return false }
-            return true
-        }
+    private var filterCriteria: DeckFilter.Criteria {
+        DeckFilter.Criteria(
+            minAge: filterMinAge,
+            maxAge: filterMaxAge,
+            verifiedOnly: filterVerifiedOnly,
+            interests: Set(filterInterestsRaw.split(separator: ",").map(String.init)),
+            matchAll: filterMatchAll
+        )
     }
 
+    /// Seeking always applies — it's core matching, not a filter.
+    private var seekingDeck: [UserProfile] {
+        DeckFilter.seekingFiltered(candidates, viewer: me)
+    }
+
+    private var filteredDeck: [UserProfile] {
+        DeckFilter.apply(filterCriteria, to: seekingDeck)
+    }
+
+    /// Empty-deck guard: if the filters empty the deck but people exist
+    /// behind them, show everyone with a persistent banner rather than a
+    /// silent empty state.
+    private var filtersFellBack: Bool {
+        filterCriteria.isActive && filteredDeck.isEmpty && !seekingDeck.isEmpty
+    }
+
+    private var deck: [UserProfile] {
+        filtersFellBack ? seekingDeck : filteredDeck
+    }
+
+    /// Scored by shared interests (reorders, never removes).
     private var remaining: [UserProfile] {
-        deck.filter { !swipedIDs.contains($0.id) }
+        DeckFilter.scored(deck.filter { !swipedIDs.contains($0.id) }, viewer: me)
+    }
+
+    /// Persistent, honest, and actionable — never a silent empty state.
+    private var fallbackBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                .foregroundStyle(Theme.secondary)
+                .accessibilityHidden(true)
+            Text("no one matches your filters — showing everyone")
+                .font(.clickPlain(.footnote, weight: .semibold))
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button {
+                showingFilters = true
+            } label: {
+                Text("change filters")
+                    .font(.click(.footnote, weight: .heavy))
+                    .foregroundStyle(Theme.primary)
+            }
+            .buttonStyle(.clickQuiet)
+            .accessibilityLabel("Change filters")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .cardSurface(radius: Theme.Metric.control)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Action row: [rewind] [message] [super like]

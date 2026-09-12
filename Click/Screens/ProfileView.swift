@@ -27,6 +27,7 @@ struct ProfileView: View {
 
     @State private var showingSettings = false
     @State private var showingEditProfile = false
+    @State private var showingCardPreview = false
     @State private var showingCoinStore = false
     @State private var showingSubscription = false
     @State private var referralCode = ""
@@ -80,6 +81,11 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingEditProfile) {
             EditProfileView()
+        }
+        .sheet(isPresented: $showingCardPreview) {
+            if let me {
+                ProfileCardPreview(profile: me)
+            }
         }
         .sheet(isPresented: $showingCoinStore) {
             CoinStoreView(coinEarnTrigger: $coinEarnTrigger)
@@ -215,8 +221,32 @@ struct ProfileView: View {
                 }
             }
 
-            PillButton(title: "edit profile") {
-                showingEditProfile = true
+            HStack(spacing: 10) {
+                PillButton(title: "edit profile") {
+                    showingEditProfile = true
+                }
+                PillButton(title: "see your card") {
+                    showingCardPreview = true
+                }
+            }
+
+            // The single cheapest interests entry point: shown only while
+            // empty, deep-links into the editor where the picker lives.
+            if let me, me.interests.isEmpty {
+                Button {
+                    showingEditProfile = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("add your interests")
+                            .font(.click(.footnote, weight: .heavy))
+                    }
+                    .foregroundStyle(Theme.brandPink)
+                }
+                .buttonStyle(.clickQuiet)
+                .accessibilityLabel("Add your interests")
+                .accessibilityHint("Opens the profile editor")
             }
         }
         .frame(maxWidth: .infinity)

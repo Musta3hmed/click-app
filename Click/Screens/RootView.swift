@@ -95,6 +95,9 @@ struct RootView: View {
         .environment(chrome)
         .task {
             MockData.seedIfNeeded(context)
+            // After seeding, before anything reads interests: phase-4
+            // stores hold legacy label-strings, the catalog wants ids.
+            InterestCatalog.migrateLegacyStrings(in: context)
             Boost.foregroundTick(in: context)
             await DemoPhotos.seedIfNeeded(context)
         }

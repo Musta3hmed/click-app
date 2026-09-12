@@ -3,28 +3,46 @@
 //  Click
 //
 //  Real deck filters behind the header "filters" capsule: age range,
-//  verified-only, interests. They feed the deck filter next to the
-//  existing seeking logic; stored per account (AccountEraser clears them).
+//  verified-only, interests (any/all). A live count shows how many
+//  people the current filters leave BEFORE the sheet closes, so an
+//  empty deck is never a surprise. Stored per account (AccountEraser
+//  clears them).
 //
 
 import SwiftUI
+import SwiftData
 
 struct SwipeFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
+
+    @Query(
+        filter: #Predicate<UserProfile> { !$0.isCurrentUser && !$0.isBlocked },
+        sort: \UserProfile.createdAt
+    )
+    private var candidates: [UserProfile]
+
+    @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
+    private var currentUsers: [UserProfile]
 
     @AppStorage(DefaultsKey.filterMinAge) private var minAge = 18
     @AppStorage(DefaultsKey.filterMaxAge) private var maxAge = 99
     @AppStorage(DefaultsKey.filterVerifiedOnly) private var verifiedOnly = false
     @AppStorage(DefaultsKey.filterInterests) private var interestsRaw = ""
+    @AppStorage(DefaultsKey.filterInterestsMatchAll) private var matchAll = false
 
-    /// Interests offered for filtering — the union used by the seeded deck.
-    private static let allInterests = [
-        "art", "books", "coffee", "cooking", "dance", "film", "food",
-        "gaming", "gym", "hiking", "music", "photography", "sports", "travel"
-    ]
+    private var me: UserProfile? { currentUsers.first { !$0.isDeleted } }
 
     private var selectedInterests: Set<String> {
         Set(interestsRaw.split(separator: ",").map(String.init))
+    }
+
+    /// Identical logic to the deck itself — DeckFilter is the single source.
+    private var matchCount: Int {
+        let criteria = DeckFilter.Criteria(
+            minAge: minAge, maxAge: maxAge, verifiedOnly: verifiedOnly,
+            interests: selectedInterests, matchAll: matchAll
+        )
+        return DeckFilter.apply(criteria, to: DeckFilter.seekingFiltered(candidates, viewer: me)).count
     }
 
     var body: some View {
@@ -55,8 +73,22 @@ struct SwipeFilterSheet: View {
                         .accessibilityLabel("Done")
                 }
             }
+            // The user learns the deck is about to be empty here, not
+            // after closing the sheet.
+            .safeAreaInset(edge: .bottom) { liveCount }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var liveCount: some View {
+        Text(matchCount == 0 ? "shows no one — the deck will show everyone instead" : "shows \(matchCount) \(matchCount == 1 ? "person" : "people")")
+            .font(.click(.subheadline, weight: .heavy))
+            .foregroundStyle(matchCount == 0 ? Theme.accent : Theme.primary)
+            .contentTransition(.numericText())
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(.bar)
+            .accessibilityLabel(matchCount == 0 ? "Shows no one. The deck will show everyone instead." : "Shows \(matchCount) people")
     }
 
     private var ageSection: some View {
@@ -109,25 +141,34 @@ struct SwipeFilterSheet: View {
     private var interestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader("interests")
-            Text("show people who share at least one selected interest. none selected means everyone.")
+            Text("none selected means everyone.")
                 .font(.clickPlain(.footnote, weight: .medium))
                 .foregroundStyle(Theme.secondary)
 
-            FlowChips(
-                all: Self.allInterests,
+            if !selectedInterests.isEmpty {
+                Picker("match", selection: $matchAll) {
+                    Text("any selected").tag(false)
+                    Text("all selected").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Interest matching")
+            }
+
+            InterestPicker(
                 selected: selectedInterests,
+                limit: nil,
                 toggle: toggle(_:)
             )
         }
         .padding(.bottom, 24)
     }
 
-    private func toggle(_ interest: String) {
+    private func toggle(_ id: String) {
         var current = selectedInterests
-        if current.contains(interest) {
-            current.remove(interest)
+        if current.contains(id) {
+            current.remove(id)
         } else {
-            current.insert(interest)
+            current.insert(id)
         }
         interestsRaw = current.sorted().joined(separator: ",")
     }
@@ -138,41 +179,11 @@ struct SwipeFilterSheet: View {
         maxAge = 99
         verifiedOnly = false
         interestsRaw = ""
-    }
-}
-
-/// Simple wrapping chip grid.
-private struct FlowChips: View {
-    let all: [String]
-    let selected: Set<String>
-    let toggle: (String) -> Void
-
-    private let columns = [GridItem(.adaptive(minimum: 96), spacing: 8)]
-
-    var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(all, id: \.self) { interest in
-                let isOn = selected.contains(interest)
-                Button {
-                    toggle(interest)
-                } label: {
-                    Text(interest)
-                        .font(.click(.subheadline, weight: .bold))
-                        .foregroundStyle(isOn ? Theme.onPrimary : Theme.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isOn ? Theme.primary : Theme.surface, in: Capsule())
-                }
-                .buttonStyle(.clickQuiet)
-                .accessibilityLabel(interest)
-                .accessibilityAddTraits(isOn ? [.isSelected, .isButton] : .isButton)
-            }
-        }
+        matchAll = false
     }
 }
 
 #Preview {
     SwipeFilterSheet()
+        .modelContainer(MockData.previewContainer)
 }

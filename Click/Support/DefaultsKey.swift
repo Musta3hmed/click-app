@@ -28,4 +28,11 @@ enum DefaultsKey {
     static let filterMaxAge = "filterMaxAge"
     static let filterVerifiedOnly = "filterVerifiedOnly"
     static let filterInterests = "filterInterests"
+    /// Whether an interest filter requires ANY shared pick (default) or ALL.
+    static let filterInterestsMatchAll = "filterInterestsMatchAll"
+
+    /// One-shot legacy-string -> canonical-id migration flag. Store
+    /// metadata, not account data — AccountEraser leaves it alone (a
+    /// fresh account on the same install is already migrated).
+    static let interestsSchemaVersion = "interestsSchemaVersion"
 }
