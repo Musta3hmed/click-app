@@ -19,6 +19,10 @@ enum DefaultsKey {
     /// Device preference, not account data — AccountEraser leaves it alone.
     static let appearance = "appearanceSetting"
 
+    // Phone verification gate (account-scoped; AccountEraser clears them).
+    static let phoneVerified = "phoneVerified"
+    static let phoneNumber = "phoneNumber"
+
     // Swipe deck filters (account-scoped; AccountEraser clears them).
     static let filterMinAge = "filterMinAge"
     static let filterMaxAge = "filterMaxAge"

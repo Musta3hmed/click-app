@@ -18,6 +18,7 @@ struct WelcomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
     @State private var legalDocument: LegalDocument?
+    @State private var showingEmailSignUp = false
     /// Hero type that still scales with Dynamic Type.
     @ScaledMetric(relativeTo: .largeTitle) private var heroSize: CGFloat = 56
 
@@ -77,6 +78,9 @@ struct WelcomeView: View {
         .sheet(item: $legalDocument) { document in
             LegalSheet(document: document)
         }
+        .sheet(isPresented: $showingEmailSignUp) {
+            EmailSignUpSheet()
+        }
     }
 
     // MARK: - Sign in
@@ -113,6 +117,14 @@ struct WelcomeView: View {
             ) {
                 Task { await auth.signIn(with: .google) }
             }
+            SignInButton(
+                symbol: "envelope.fill",
+                label: "Sign up with email",
+                inProgress: false,
+                disabled: auth.isSigningIn
+            ) {
+                showingEmailSignUp = true
+            }
 
             if AuthConfig.isFullyMocked {
                 Label("Demo mode — sign-in is simulated on this build", systemImage: "wrench.and.screwdriver.fill")
@@ -136,6 +148,98 @@ struct WelcomeView: View {
             .padding(.top, 4)
         }
         .animation(Theme.Motion.screenFade, value: auth.lastErrorMessage)
+    }
+}
+
+// MARK: - Email sign-up
+
+/// Email + password. The password is validated but deliberately never
+/// stored — no backend exists to check it against, and the sheet says so.
+private struct EmailSignUpSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AuthSession.self) private var auth
+
+    @State private var email = ""
+    @State private var password = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Metric.Space.m) {
+                    TextField("email", text: $email)
+                        .font(.clickPlain(.body, weight: .medium))
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
+                        .accessibilityLabel("Email address")
+
+                    SecureField("password (8+ characters)", text: $password)
+                        .font(.clickPlain(.body, weight: .medium))
+                        .textContentType(.newPassword)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Metric.control, style: .continuous))
+                        .accessibilityLabel("Password")
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.clickPlain(.footnote, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                    }
+
+                    Button {
+                        submit()
+                    } label: {
+                        Text("create account")
+                            .font(.click(.headline, weight: .heavy))
+                            .foregroundStyle(Theme.onPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: Theme.Metric.primaryButton)
+                            .background(Theme.primary, in: Capsule())
+                    }
+                    .buttonStyle(.click)
+                    .accessibilityLabel("Create account")
+
+                    Text("demo build - your password is checked but never stored, and nothing leaves this device.")
+                        .font(.clickPlain(.footnote, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .padding(.horizontal, Theme.Metric.gutter)
+                .padding(.top, Theme.Metric.sheetTopInset)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.background)
+            .navigationTitle("sign up with email")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func submit() {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        let looksLikeEmail = trimmed.contains("@")
+            && trimmed.split(separator: "@").last?.contains(".") == true
+            && !trimmed.contains(" ")
+        guard looksLikeEmail else {
+            errorMessage = "That doesn't look like an email address."
+            return
+        }
+        guard password.count >= 8 else {
+            errorMessage = "Password needs at least 8 characters."
+            return
+        }
+        auth.signIn(withEmail: trimmed)
+        dismiss()
     }
 }
 

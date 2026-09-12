@@ -22,6 +22,7 @@ struct RootView: View {
     @Namespace private var logoNamespace
 
     @AppStorage(DefaultsKey.onboardingCompleted) private var onboardingCompleted = false
+    @AppStorage(DefaultsKey.phoneVerified) private var phoneVerified = false
 
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
@@ -35,7 +36,11 @@ struct RootView: View {
                 WelcomeView(logoNamespace: logoNamespace)
                     .transition(.opacity)
             case .signedIn:
-                if onboardingCompleted {
+                // Every account verifies a phone number before onboarding.
+                if !phoneVerified {
+                    PhoneVerificationView()
+                        .transition(.opacity)
+                } else if onboardingCompleted {
                     mainShell
                         .transition(.opacity)
                 } else {
@@ -46,6 +51,7 @@ struct RootView: View {
         }
         .animation(Theme.Motion.screenFade, value: auth.state)
         .animation(Theme.Motion.screenFade, value: onboardingCompleted)
+        .animation(Theme.Motion.screenFade, value: phoneVerified)
         // The single place Reduce Motion is read; everything below resolves
         // tiers through @Environment(\.motion).
         .environment(\.motion, ClickMotion(reduceMotion: reduceMotion))

@@ -20,6 +20,7 @@ final class SafetyMenuUITests: XCTestCase {
             "--uitest-signed-in",
             "--uitest-photos",
             "-onboardingCompleted", "YES",
+            "-phoneVerified", "YES",
             "-welcomePopupShown", "YES"
         ]
         app.launch()

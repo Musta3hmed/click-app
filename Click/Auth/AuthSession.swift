@@ -134,6 +134,29 @@ final class AuthSession {
         }
     }
 
+    /// Email sign-up. The caller validates the credentials; the password
+    /// is deliberately NOT persisted anywhere (no backend exists to check
+    /// it against — the session token is a local marker only).
+    func signIn(withEmail email: String) {
+        let normalized = email.lowercased()
+        let session = StoredSession(
+            providerUserID: "email:\(normalized)",
+            provider: .email,
+            token: "email-local",
+            name: nil,
+            email: normalized,
+            createdAt: .now
+        )
+        do {
+            try persist(session)
+            state = .signedIn(session)
+            Haptics.notify(.success)
+        } catch {
+            lastErrorMessage = "Couldn't save your sign-in. Try again."
+            Haptics.notify(.error)
+        }
+    }
+
     /// Sign out AND destroy the local account. Every caller must pass the
     /// model context — leaving the previous user's profile behind was a
     /// PII leak and an 18+ gate bypass on shared phones.
@@ -160,6 +183,10 @@ final class AuthSession {
             } else {
                 MockAuthProvider(kind: .google)
             }
+        case .email:
+            // Email goes through signIn(withEmail:) — this keeps the
+            // switch exhaustive for completeness.
+            MockAuthProvider(kind: .mock)
         case .mock:
             MockAuthProvider(kind: .mock)
         }
