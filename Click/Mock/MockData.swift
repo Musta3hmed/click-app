@@ -51,8 +51,15 @@ enum MockData {
         // account sees "no chats yet" and the message seeds only arrive
         // once the user has actually liked someone (checked per launch, so
         // they trickle in rather than appearing en masse on day one).
+        // Guarded on the MESSAGES folder specifically — counting every
+        // conversation let the seeded super-like requests block the demo
+        // chats forever.
         let hasSwiped = ((try? context.fetchCount(FetchDescriptor<Match>())) ?? 0) > 0
-        if hasSwiped, (try? context.fetchCount(FetchDescriptor<Conversation>())) == 0 {
+        let messagesRaw = ChatFolder.messages.rawValue
+        let messageThreads = FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.folderRaw == messagesRaw }
+        )
+        if hasSwiped, (try? context.fetchCount(messageThreads)) == 0 {
             seedConversations(context, profiles: profiles)
         }
 
