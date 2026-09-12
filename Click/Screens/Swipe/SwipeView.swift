@@ -604,11 +604,25 @@ struct SwipeView: View {
     /// Runs the moment a swipe starts animating. Creates the Match (deduped
     /// — "start over" must not re-create rows), records the rewind entry,
     /// and decides on the celebration.
+    ///
+    /// The haptic fires immediately; the SwiftData work (fetch + save on
+    /// the main thread) is deferred one runloop turn so the fly-off's
+    /// first frames render before any disk I/O — committing synchronously
+    /// at gesture release was a visible hitch. The fly-off runs ~0.4s, so
+    /// the deferred work always lands before finishSwipe reads
+    /// celebrationPending.
     private func commitData(profile: UserProfile, liked: Bool) {
         Haptics.impact(liked ? .medium : .light)
         let context0 = pendingContext
         pendingContext = nil
 
+        Task { @MainActor in
+            await Task.yield()
+            commitDataDeferred(profile: profile, liked: liked, context0: context0)
+        }
+    }
+
+    private func commitDataDeferred(profile: UserProfile, liked: Bool, context0: SwipeContext?) {
         var createdMatch: Match?
         var mutual = false
         if liked {

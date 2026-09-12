@@ -20,10 +20,25 @@ struct SwipeCard: View {
     @State private var photoIndex = 0
     /// Resolved once per card, not per drag frame.
     @State private var sharedCommunity: Community?
-    /// Decoded once per card — decoding JPEGs inside a computed property ran
-    /// on every drag frame once real photos existed.
+    /// Decoded once per card, OFF the main thread — decoding JPEGs in a
+    /// computed property ran on every drag frame once real photos
+    /// existed, and decoding on the main actor hitched the deck swap.
     @State private var photos: [UIImage] = []
+    /// Everything the info block derives from the profile, computed once
+    /// per card. The body runs on every drag frame (the deck re-renders
+    /// at display rate while the finger moves), and promptAnswers alone
+    /// JSON-decodes stored Data — doing that per frame was the lag.
+    @State private var info = CardInfo()
     @Namespace private var progress
+
+    struct CardInfo {
+        var promptQuestion: String?
+        var promptAnswer: String?
+        /// (id, label, isShared) — shared first, capped for the card.
+        var chips: [(id: String, label: String, isShared: Bool)] = []
+        var sharedLine: String?
+        var accessibilityLabel = ""
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -79,14 +94,18 @@ struct SwipeCard: View {
         .compositingGroup()
         .shadow(color: Theme.shadowColor, radius: 16, y: 8)
         .task(id: profile.id) {
-            photos = profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
             photoIndex = 0
+            info = Self.makeInfo(profile: profile, viewer: viewer)
             sharedCommunity = CommunityService.sharedCommunity(viewer, profile, in: context)
+            photos = await Self.decodePhotos(profile.orderedPhotos.map(\.data))
         }
         // DemoPhotos can add photos while the card is on screen.
         .onChange(of: profile.photos.count) { _, _ in
-            photos = profile.orderedPhotos.compactMap { UIImage(data: $0.data) }
-            photoIndex = min(photoIndex, max(0, photos.count - 1))
+            let datas = profile.orderedPhotos.map(\.data)
+            Task { @MainActor in
+                photos = await Self.decodePhotos(datas)
+                photoIndex = min(photoIndex, max(0, photos.count - 1))
+            }
         }
         .accessibilityElement(children: .contain)
     }
@@ -162,12 +181,12 @@ struct SwipeCard: View {
             // The first answered prompt — identity the bio alone can't
             // carry. One on the card keeps it readable; the rest show in
             // the profile preview/editor.
-            if let entry = profile.promptAnswers.first, let prompt = entry.prompt {
+            if let question = info.promptQuestion, let answer = info.promptAnswer {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(prompt.question)
+                    Text(question)
                         .font(.clickPlain(.caption2, weight: .bold))
                         .foregroundStyle(Theme.onImageSecondary)
-                    Text(entry.answer)
+                    Text(answer)
                         .font(.clickPlain(.footnote, weight: .semibold))
                         .foregroundStyle(Theme.onImagePrimary)
                         .lineLimit(2)
@@ -191,7 +210,7 @@ struct SwipeCard: View {
                 .background(Capsule().fill(Theme.onImageFillStrong))
             }
 
-            if let line = InterestMatching.sharedLine(viewer, profile) {
+            if let line = info.sharedLine {
                 Text(line)
                     .font(.clickPlain(.caption, weight: .bold))
                     .foregroundStyle(Theme.onImagePrimary)
@@ -203,20 +222,19 @@ struct SwipeCard: View {
                     .font(.clickPlain(.caption, weight: .semibold))
                     .foregroundStyle(Theme.onImageSecondary)
                 // Shared interests first, then the rest, capped at 3.
-                ForEach(orderedChipIDs, id: \.self) { id in
-                    let isShared = sharedIDs.contains(id)
+                ForEach(info.chips, id: \.id) { chip in
                     HStack(spacing: 4) {
-                        if isShared, let symbol = InterestCatalog.symbolName(for: id) {
+                        if chip.isShared, let symbol = InterestCatalog.symbolName(for: chip.id) {
                             Image(systemName: symbol)
                                 .font(.system(size: 10, weight: .bold))
                         }
-                        Text(InterestCatalog.label(for: id))
+                        Text(chip.label)
                             .font(.clickPlain(.caption, weight: .semibold))
                     }
                     .foregroundStyle(Theme.onImagePrimary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill(isShared ? Theme.onImageFillStrong : Theme.onImageFill))
+                    .background(Capsule().fill(chip.isShared ? Theme.onImageFillStrong : Theme.onImageFill))
                 }
             }
         }
@@ -224,35 +242,52 @@ struct SwipeCard: View {
         // One merged element: without this, VoiceOver read every text twice
         // (once via children, once via a container label).
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(cardAccessibilityLabel)
+        .accessibilityLabel(info.accessibilityLabel)
     }
 
-    /// Shared interests first, then the rest, capped at what the card shows.
-    private var orderedChipIDs: [String] {
-        let shared = profile.interests.filter { sharedIDs.contains($0) }
-        let rest = profile.interests.filter { !sharedIDs.contains($0) }
-        return Array((shared + rest).prefix(InterestCatalog.shownOnCard))
-    }
+    // MARK: - Once-per-card derivation
 
-    private var sharedIDs: Set<String> {
-        Set(InterestMatching.shared(viewer, profile).map(\.id))
-    }
+    static func makeInfo(profile: UserProfile, viewer: UserProfile?) -> CardInfo {
+        var info = CardInfo()
 
-    private var cardAccessibilityLabel: String {
+        if let entry = profile.promptAnswers.first(where: { !$0.answer.isEmpty }),
+           let prompt = entry.prompt {
+            info.promptQuestion = prompt.question
+            info.promptAnswer = entry.answer
+        }
+
+        let shared = InterestMatching.shared(viewer, profile)
+        let sharedIDs = Set(shared.map(\.id))
+        let orderedIDs = profile.interests.filter { sharedIDs.contains($0) }
+            + profile.interests.filter { !sharedIDs.contains($0) }
+        info.chips = orderedIDs.prefix(InterestCatalog.shownOnCard).map {
+            (id: $0, label: InterestCatalog.label(for: $0), isShared: sharedIDs.contains($0))
+        }
+        info.sharedLine = InterestMatching.sharedLine(viewer, profile)
+
         var label = "\(profile.name), \(profile.displayAge). \(profile.bio). "
         if profile.isVerified { label += "Verified. " }
-        if let entry = profile.promptAnswers.first, let prompt = entry.prompt {
-            label += "\(prompt.question): \(entry.answer). "
+        if let question = info.promptQuestion, let answer = info.promptAnswer {
+            label += "\(question): \(answer). "
         }
-        let sharedLabels = InterestMatching.shared(viewer, profile).map(\.label)
+        let sharedLabels = shared.map(\.label)
         if !sharedLabels.isEmpty {
             label += "\(sharedLabels.count) shared interest\(sharedLabels.count == 1 ? "" : "s"): \(sharedLabels.joined(separator: ", ")). "
         }
-        let others = orderedChipIDs.filter { !sharedIDs.contains($0) }.map { InterestCatalog.label(for: $0) }
+        let others = info.chips.filter { !$0.isShared }.map(\.label)
         if !others.isEmpty {
             label += "Interests: \(others.joined(separator: ", "))"
         }
-        return label
+        info.accessibilityLabel = label
+        return info
+    }
+
+    /// JPEG decode off the main actor — plain [Data] crosses the
+    /// isolation boundary, the SwiftData model never does.
+    static func decodePhotos(_ datas: [Data]) async -> [UIImage] {
+        await Task.detached(priority: .userInitiated) {
+            datas.compactMap { UIImage(data: $0) }
+        }.value
     }
 
     /// Stories-style progress: one sliding capsule over dimmed track
