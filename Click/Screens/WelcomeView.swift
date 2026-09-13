@@ -15,7 +15,10 @@ struct WelcomeView: View {
     var logoNamespace: Namespace.ID
 
     @Environment(AuthSession.self) private var auth
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Resolved through the motion environment - RootView is the single
+    // accessibilityReduceMotion read (MEGA-BRIEF 5.3 cleanup).
+    @Environment(\.motion) private var motion
+    private var reduceMotion: Bool { motion.reduceMotion }
     @State private var appeared = false
     @State private var legalDocument: LegalDocument?
     @State private var showingEmailSignUp = false

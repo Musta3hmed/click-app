@@ -452,7 +452,10 @@ private struct TileFlip<Front: View, Back: View>: View, Animatable {
 private struct CoinFlightOverlay: View {
     let trigger: Int
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Resolved through the motion environment - RootView is the single
+    // accessibilityReduceMotion read (MEGA-BRIEF 5.3 cleanup).
+    @Environment(\.motion) private var motion
+    private var reduceMotion: Bool { motion.reduceMotion }
 
     var body: some View {
         ZStack {

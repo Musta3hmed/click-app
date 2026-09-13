@@ -15,7 +15,10 @@ import SwiftUI
 
 struct AmbientBackground: View {
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Resolved through the motion environment - RootView is the single
+    // accessibilityReduceMotion read (MEGA-BRIEF 5.3 cleanup).
+    @Environment(\.motion) private var motion
+    private var reduceMotion: Bool { motion.reduceMotion }
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
 

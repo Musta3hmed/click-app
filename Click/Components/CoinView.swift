@@ -21,7 +21,10 @@ struct CoinView: View {
     /// Increment to fire the earn animation (spin + pop).
     var earnTrigger: Int = 0
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Resolved through the motion environment - RootView is the single
+    // accessibilityReduceMotion read (MEGA-BRIEF 5.3 cleanup).
+    @Environment(\.motion) private var motion
+    private var reduceMotion: Bool { motion.reduceMotion }
 
     private struct EarnValues {
         var angle = 0.0
