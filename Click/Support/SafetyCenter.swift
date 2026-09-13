@@ -36,10 +36,15 @@ enum SafetyCenter {
         _ profile: UserProfile,
         reason: ReportReason,
         alsoBlock: Bool,
+        surface: String? = nil,
         in context: ModelContext
     ) {
         profile.reportedReasonRaw = reason.rawValue
         profile.reportedAt = .now
+        // Where the report came from ("deck", "deck lens:<community-id>",
+        // "chats", ...) so a community-originated report is
+        // distinguishable when the pipeline goes live.
+        profile.reportedSurface = surface
         if alsoBlock {
             profile.isBlocked = true
             profile.isMuted = true
@@ -53,6 +58,7 @@ enum SafetyCenter {
 
 struct ReportSheet: View {
     let profile: UserProfile
+    var surface: String? = nil
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
@@ -109,7 +115,7 @@ struct ReportSheet: View {
                 Section {
                     Button(role: .destructive) {
                         guard let selectedReason else { return }
-                        SafetyCenter.report(profile, reason: selectedReason, alsoBlock: alsoBlock, in: context)
+                        SafetyCenter.report(profile, reason: selectedReason, alsoBlock: alsoBlock, surface: surface, in: context)
                         dismiss()
                     } label: {
                         Text("Submit report")
@@ -137,6 +143,7 @@ struct ReportSheet: View {
 /// Drop-in overflow menu for any profile or conversation surface.
 struct SafetyMenu: View {
     let profile: UserProfile
+    var surface: String? = nil
     @Environment(\.modelContext) private var context
     @State private var showingReport = false
     @State private var confirmingBlock = false
@@ -173,7 +180,7 @@ struct SafetyMenu: View {
         }
         .accessibilityLabel("Safety options for \(profile.name)")
         .sheet(isPresented: $showingReport) {
-            ReportSheet(profile: profile)
+            ReportSheet(profile: profile, surface: surface)
         }
         .confirmationDialog(
             "Block \(profile.name)?",

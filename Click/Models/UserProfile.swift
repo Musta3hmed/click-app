@@ -25,6 +25,11 @@ final class UserProfile {
     /// lightweight migration from phase-3 stores succeeds.
     var boostedUntil: Date? = nil
 
+    /// JSON-encoded [PromptAnswer] (see PromptCatalog). Data with a
+    /// declared default keeps lightweight migration from phase-4 stores
+    /// working; read/write through the `promptAnswers` accessor.
+    var promptsData: Data = Data()
+
     /// For the current-user row: the AuthResult.providerUserID that owns it.
     /// Onboarding refuses to reuse a row whose owner doesn't match the
     /// signed-in credential — the backstop against inheriting a previous
@@ -51,6 +56,12 @@ final class UserProfile {
     @Relationship(deleteRule: .cascade, inverse: \ProfilePhoto.owner)
     var photos: [ProfilePhoto]
 
+    /// Community join rows (see Community.swift). Cascade: erasing the
+    /// account removes its memberships with it. Declared default keeps
+    /// lightweight migration from phase-4 stores working.
+    @Relationship(deleteRule: .cascade, inverse: \CommunityMembership.member)
+    var memberships: [CommunityMembership] = []
+
     // MARK: Safety state
     // Blocking hides the profile everywhere. Muting only silences
     // notifications and keeps the conversation in place.
@@ -58,6 +69,9 @@ final class UserProfile {
     var isMuted: Bool
     var reportedReasonRaw: String?
     var reportedAt: Date?
+    /// Which surface the report came from ("deck", "deck lens:<id>",
+    /// "chats"). Declared default keeps lightweight migration working.
+    var reportedSurface: String? = nil
 
     var createdAt: Date
 

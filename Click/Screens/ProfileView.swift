@@ -27,6 +27,11 @@ struct ProfileView: View {
 
     @State private var showingSettings = false
     @State private var showingEditProfile = false
+    @State private var showingCardPreview = false
+    @State private var showingCommunities = false
+
+    @Query(sort: [SortDescriptor(\Community.sortIndex), SortDescriptor(\Community.createdAt)])
+    private var allCommunities: [Community]
     @State private var showingCoinStore = false
     @State private var showingSubscription = false
     @State private var referralCode = ""
@@ -54,6 +59,7 @@ struct ProfileView: View {
                 OverlappingSheet(ambient: true, collapseProgress: headerCollapse) {
                     VStack(alignment: .leading, spacing: 28) {
                         identityBlock
+                        communitiesSection
                         subscriptionSection
                         bingoSection
                         dailyRewardsSection
@@ -80,6 +86,14 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingEditProfile) {
             EditProfileView()
+        }
+        .sheet(isPresented: $showingCardPreview) {
+            if let me {
+                ProfileCardPreview(profile: me)
+            }
+        }
+        .sheet(isPresented: $showingCommunities) {
+            CommunitiesView()
         }
         .sheet(isPresented: $showingCoinStore) {
             CoinStoreView(coinEarnTrigger: $coinEarnTrigger)
@@ -159,7 +173,12 @@ struct ProfileView: View {
 
     private var identityBlock: some View {
         VStack(spacing: 12) {
-            // Half in the header, half in the sheet — a deliberate straddle.
+            // Sits fully inside the sheet. It used to straddle the header
+            // with a negative offset, but the header moved OUTSIDE the
+            // ScrollView (see `body`) and a ScrollView clips its content —
+            // so the offset pushed the top half of the avatar out of bounds
+            // and it rendered cut in half. Do not reintroduce the offset
+            // without also moving the avatar out of the scroll view.
             StickerAvatar(
                 name: me?.name ?? "You",
                 size: Self.avatarSize,
@@ -167,8 +186,6 @@ struct ProfileView: View {
                 isVerified: me?.isVerified ?? false,
                 photo: myPhoto
             )
-            .offset(y: -Self.avatarSize / 2 - Theme.Metric.sheetOverlap / 2)
-            .padding(.bottom, -(Self.avatarSize / 2 - 8) - Theme.Metric.sheetOverlap / 2)
 
             HStack(spacing: 8) {
                 CountryBadge(code: me?.countryCode)
@@ -215,11 +232,91 @@ struct ProfileView: View {
                 }
             }
 
-            PillButton(title: "edit profile") {
-                showingEditProfile = true
+            HStack(spacing: 10) {
+                PillButton(title: "edit profile") {
+                    showingEditProfile = true
+                }
+                PillButton(title: "see your card") {
+                    showingCardPreview = true
+                }
+            }
+
+            // The single cheapest interests entry point: shown only while
+            // empty, deep-links into the editor where the picker lives.
+            if let me, me.interests.isEmpty {
+                Button {
+                    showingEditProfile = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("add your interests")
+                            .font(.click(.footnote, weight: .heavy))
+                    }
+                    .foregroundStyle(Theme.brandPink)
+                }
+                .buttonStyle(.clickQuiet)
+                .accessibilityLabel("Add your interests")
+                .accessibilityHint("Opens the profile editor")
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Communities
+
+    /// Compact strip: joined communities as chips, plus the way in. Not
+    /// a fourth tab — the sheet owns discovery.
+    private var communitiesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("communities")
+
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(myCommunities) { community in
+                        HStack(spacing: 6) {
+                            Image(systemName: community.symbolName)
+                                .font(.system(size: 12, weight: .heavy))
+                                .foregroundStyle(CommunityService.tint(community.tintToken))
+                            Text(community.name)
+                                .font(.click(.footnote, weight: .heavy))
+                                .foregroundStyle(Theme.primary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Theme.surface, in: Capsule())
+                        .accessibilityLabel("Member of \(community.name)")
+                    }
+
+                    Button {
+                        showingCommunities = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: myCommunities.isEmpty ? "person.3.fill" : "plus")
+                                .font(.system(size: 12, weight: .heavy))
+                            Text(myCommunities.isEmpty ? "find your communities" : "more")
+                                .font(.click(.footnote, weight: .heavy))
+                        }
+                        .foregroundStyle(Theme.onPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Theme.primary, in: Capsule())
+                    }
+                    .buttonStyle(.click)
+                    .accessibilityLabel(myCommunities.isEmpty ? "Find your communities" : "More communities")
+                }
+                .padding(.horizontal, Theme.Metric.gutter)
+            }
+            .scrollIndicators(.hidden)
+            .padding(.horizontal, -Theme.Metric.gutter)
+        }
+        .padding(.horizontal, Theme.Metric.gutter)
+    }
+
+    private var myCommunities: [Community] {
+        guard let me else { return [] }
+        let joined = Set(me.memberships.map(\.communityID))
+        return allCommunities.filter { joined.contains($0.id) && $0.state == .approved }
     }
 
     // MARK: - Subscription

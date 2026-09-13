@@ -18,7 +18,6 @@ struct SettingsView: View {
     @Query(filter: #Predicate<UserProfile> { $0.isCurrentUser })
     private var currentUsers: [UserProfile]
 
-    @AppStorage(DefaultsKey.showMyState) private var showMyState = false
     @AppStorage(DefaultsKey.appearance) private var appearanceRaw = AppearanceSetting.system.rawValue
 
     @State private var didCopyUsername = false
@@ -47,8 +46,7 @@ struct SettingsView: View {
                 Group {
                     accountSection
                     customizationSection
-                    visibilitySection
-                    notificationsSection
+                        notificationsSection
                     communitySection
                     privacySection
                 }
@@ -138,16 +136,12 @@ struct SettingsView: View {
         }
     }
 
-    private var visibilitySection: some View {
-        Section {
-            Toggle("show when I'm online", isOn: $showMyState)
-        } header: {
-            Text("visibility")
-        } footer: {
-            Text("When off, other people don't see your online indicator.")
-        }
-        .tint(Theme.primary)
-    }
+    // The "show when I'm online" toggle is gone: its footer claimed other
+    // people wouldn't see an indicator, but no code read the flag and the
+    // current user never appears in anyone's deck — a promise about other
+    // people that nothing implements. Restore it only when presence is
+    // real (DefaultsKey.showMyState stays so AccountEraser keeps clearing
+    // historical values).
 
     private var notificationsSection: some View {
         Section("system notifications") {
@@ -166,6 +160,15 @@ struct SettingsView: View {
         Section("community") {
             Button("guidelines") { legalDocument = .guidelines }
                 .foregroundStyle(Theme.primary)
+
+            // The review queue for user-created communities. Local-only
+            // moderation until a backend exists — the panel says so.
+            NavigationLink {
+                CommunityAdminView()
+            } label: {
+                Text("community moderation")
+                    .foregroundStyle(Theme.primary)
+            }
 
             Button("write a review") {
                 // App Store write-review deep link (placeholder id until

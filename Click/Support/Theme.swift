@@ -128,6 +128,8 @@ enum Theme {
     static let onImagePrimary = Color.white
     static let onImageSecondary = Color.white.opacity(0.9)
     static let onImageFill = Color.white.opacity(0.22)
+    /// Shared-interest chips: the stronger of the two photo-overlay fills.
+    static let onImageFillStrong = Color.white.opacity(0.38)
 
     // MARK: Elevation
     // Black-on-black shadows are invisible; dark mode compensates with a

@@ -39,7 +39,7 @@ struct ConversationView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let participant = conversation.participant {
-                    SafetyMenu(profile: participant)
+                    SafetyMenu(profile: participant, surface: "conversation")
                 }
             }
         }

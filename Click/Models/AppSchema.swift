@@ -18,6 +18,8 @@ enum AppSchema {
         BoosterInventory.self,
         DailyReward.self,
         Wallet.self,
-        BingoBoard.self
+        BingoBoard.self,
+        Community.self,
+        CommunityMembership.self
     ]
 }

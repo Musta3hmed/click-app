@@ -46,6 +46,11 @@ enum AccountEraser {
             inventory.count = 0
         }
 
+        // The account's memberships cascade with its profile row above;
+        // communities IT created (pending or approved) are top-level rows
+        // and go here, along with the join rate-limit defaults.
+        CommunityService.eraseUserCreated(in: context)
+
         // Block/mute/report state lives ON the candidate rows — it is the
         // previous user's behavioural data and must not be inherited by the
         // next account (who would see a blocklist they never made).
@@ -54,6 +59,7 @@ enum AccountEraser {
             candidate.isMuted = false
             candidate.reportedReasonRaw = nil
             candidate.reportedAt = nil
+            candidate.reportedSurface = nil
         }
 
         try? context.save()

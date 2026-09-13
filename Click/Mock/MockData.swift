@@ -104,33 +104,33 @@ enum MockData {
 
     private static func candidateProfiles() -> [UserProfile] {
         let seeds: [(String, Int, String, String, Zodiac, [String], Bool, Gender)] = [
-            ("Maya Chen", 19, "coffee first, talk later", "AU", .virgo, ["coffee", "film", "art"], true, .woman),
-            ("Leo Martins", 21, "skate or sleep", "BR", .leo, ["skating", "music", "travel"], false, .man),
-            ("Priya Raman", 20, "will out-argue you about movies", "IN", .gemini, ["film", "books", "debate"], true, .woman),
-            ("Noah Whitfield", 22, "gym, food, repeat", "GB", .taurus, ["gym", "food", "football"], false, .man),
+            ("Maya Chen", 19, "coffee first, talk later", "AU", .virgo, ["coffee", "films", "art"], true, .woman),
+            ("Leo Martins", 21, "skate or sleep", "BR", .leo, ["skating", "live-music", "travel"], false, .man),
+            ("Priya Raman", 20, "will out-argue you about movies", "IN", .gemini, ["films", "books", "debate"], true, .woman),
+            ("Noah Whitfield", 22, "gym, food, repeat", "GB", .taurus, ["gym", "eating-out", "football"], false, .man),
             ("Sofia Rossi", 19, "chaotic good", "IT", .sagittarius, ["dance", "fashion", "travel"], false, .woman),
-            ("Kai Tanaka", 20, "producing beats at 3am", "JP", .pisces, ["music", "gaming", "anime"], true, .man),
+            ("Kai Tanaka", 20, "producing beats at 3am", "JP", .pisces, ["live-music", "gaming", "anime"], true, .man),
             ("Amara Okafor", 21, "plant mum, dog aunt", "NG", .cancer, ["plants", "dogs", "cooking"], false, .woman),
-            ("Ethan Brooks", 23, "ask me about my fantasy team", "US", .aries, ["sports", "gaming", "food"], false, .man),
-            ("Lena Novak", 18, "sketching strangers on the tram", "PL", .libra, ["art", "coffee", "music"], false, .woman),
+            ("Ethan Brooks", 23, "ask me about my fantasy team", "US", .aries, ["football", "gaming", "eating-out"], false, .man),
+            ("Lena Novak", 18, "sketching strangers on the tram", "PL", .libra, ["art", "coffee", "live-music"], false, .woman),
             ("Diego Herrera", 22, "salsa lessons, no experience needed", "MX", .scorpio, ["dance", "cooking", "travel"], true, .man),
             ("Chloe Dubois", 20, "your nan's favourite", "FR", .capricorn, ["baking", "books", "cats"], false, .woman),
             ("Arjun Patel", 21, "startup bro in recovery", "IN", .aquarius, ["tech", "gym", "coffee"], false, .man),
-            ("Zoe Kelly", 19, "surf report is my horoscope", "AU", .pisces, ["surfing", "music", "dogs"], true, .woman),
-            ("Mateo Silva", 20, "two truths and a lie, go", "AR", .gemini, ["football", "music", "travel"], false, .man),
-            ("Hana Kim", 22, "film photography enjoyer", "KR", .virgo, ["photography", "film", "coffee"], false, .woman),
+            ("Zoe Kelly", 19, "surf report is my horoscope", "AU", .pisces, ["surfing", "live-music", "dogs"], true, .woman),
+            ("Mateo Silva", 20, "two truths and a lie, go", "AR", .gemini, ["football", "live-music", "travel"], false, .man),
+            ("Hana Kim", 22, "film photography enjoyer", "KR", .virgo, ["photography", "films", "coffee"], false, .woman),
             ("Oscar Lindqvist", 23, "cold water swimmer, warm person", "SE", .taurus, ["swimming", "books", "hiking"], false, .man),
             ("Fatima Haddad", 20, "architecture student, tired", "LB", .leo, ["design", "art", "coffee"], true, .woman),
-            ("Ruby Thompson", 18, "I will beat you at Mario Kart", "NZ", .aries, ["gaming", "music", "dogs"], false, .woman),
-            ("Tomas Novotny", 21, "climbing walls, literally", "CZ", .sagittarius, ["climbing", "hiking", "food"], false, .man),
-            ("Isla Fraser", 19, "playlist curator, professionally nosy", "GB", .cancer, ["music", "books", "film"], false, .woman),
+            ("Ruby Thompson", 18, "I will beat you at Mario Kart", "NZ", .aries, ["gaming", "live-music", "dogs"], false, .woman),
+            ("Tomas Novotny", 21, "climbing walls, literally", "CZ", .sagittarius, ["climbing", "hiking", "eating-out"], false, .man),
+            ("Isla Fraser", 19, "playlist curator, professionally nosy", "GB", .cancer, ["live-music", "books", "films"], false, .woman),
             ("Yusuf Demir", 22, "chess in the park, every Sunday", "TR", .libra, ["chess", "coffee", "travel"], false, .man),
-            ("Nina Petrova", 20, "ballet then burgers", "RU", .scorpio, ["dance", "food", "art"], false, .woman)
+            ("Nina Petrova", 20, "ballet then burgers", "RU", .scorpio, ["dance", "eating-out", "art"], false, .woman)
         ]
 
         let base = Date.now
         return seeds.enumerated().map { index, seed in
-            UserProfile(
+            let profile = UserProfile(
                 name: seed.0,
                 age: seed.1,
                 bio: seed.2,
@@ -142,8 +142,45 @@ enum MockData {
                 gender: seed.7,
                 createdAt: base.addingTimeInterval(Double(index) * 0.01)
             )
+            if let answers = seedPrompts[seed.0] {
+                profile.promptAnswers = answers
+            }
+            return profile
         }
     }
+
+    /// Prompt answers for a spread of seeded candidates, keyed by name so
+    /// the tuple array above stays readable. Roughly a third of the deck
+    /// has them — enough to make the surface feel real without every card
+    /// reading identically.
+    private static let seedPrompts: [String: [PromptAnswer]] = [
+        "Maya Chen": [
+            PromptAnswer(promptID: "perfect-sunday", answer: "flat white, gallery, absolutely no plans after 2pm"),
+        ],
+        "Priya Raman": [
+            PromptAnswer(promptID: "hill-to-die-on", answer: "the book is not always better than the film"),
+            PromptAnswer(promptID: "talk-for-hours", answer: "why every thriller falls apart in act three"),
+        ],
+        "Kai Tanaka": [
+            PromptAnswer(promptID: "song-on-repeat", answer: "whatever I made at 3am and will disown by friday"),
+        ],
+        "Amara Okafor": [
+            PromptAnswer(promptID: "simple-pleasures", answer: "repotting day, dog videos, the first cup of tea"),
+        ],
+        "Diego Herrera": [
+            PromptAnswer(promptID: "first-round", answer: "you can name three salsa moves without googling"),
+        ],
+        "Chloe Dubois": [
+            PromptAnswer(promptID: "way-to-my-heart", answer: "warm bread. that's it, that's the answer"),
+            PromptAnswer(promptID: "two-truths", answer: "I've met three prime ministers, one owes me cake"),
+        ],
+        "Zoe Kelly": [
+            PromptAnswer(promptID: "perfect-sunday", answer: "dawn surf check, then whatever the ocean decides"),
+        ],
+        "Yusuf Demir": [
+            PromptAnswer(promptID: "weirdly-good-at", answer: "ending chess games in exactly eleven moves"),
+        ],
+    ]
 
     // MARK: - Conversations
 
@@ -306,7 +343,7 @@ enum MockData {
             bio: "just here for the vibes",
             countryCode: "AU",
             zodiac: .aquarius,
-            interests: ["music", "gaming", "gym"],
+            interests: ["live-music", "gaming", "gym"],
             isVerified: true,
             isOnline: true,
             isCurrentUser: true,
