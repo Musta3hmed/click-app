@@ -37,11 +37,17 @@ struct SwipeView: View {
     @Query(sort: [SortDescriptor(\Community.sortIndex), SortDescriptor(\Community.createdAt)])
     private var allCommunities: [Community]
 
-    // MARK: Session state
+    @Query private var wallets: [Wallet]
 
-    /// O(1) membership + explicit order (rewind needs the order).
-    @State private var swipedIDs: Set<UUID> = []
-    @State private var swipeOrder: [UUID] = []
+    // MARK: Swipe state
+
+    /// Persisted decisions (MEGA-BRIEF 4.2) — session @State meant every
+    /// cold launch reset the deck and the same people returned forever.
+    @Query private var decisions: [SwipeDecision]
+
+    private var swipedIDs: Set<UUID> {
+        Set(decisions.map(\.profileID))
+    }
     /// Everything each swipe created, so rewind is N-deep and cleans up.
     @State private var rewindStack: [RewindEntry] = []
     /// Set for the swipe the deck is currently animating (opener/super
@@ -61,6 +67,11 @@ struct SwipeView: View {
     @State private var alertMessage: String?
     /// Community lens: session state, nil = everyone.
     @State private var lensCommunityID: String?
+
+    /// In-app pre-prompt after the FIRST match (never at launch) — a
+    /// "not now" here keeps the system-level ask available for later.
+    @AppStorage(DefaultsKey.notificationsPrimed) private var notificationsPrimed = false
+    @State private var showingNotificationPrompt = false
 
     // Bulk message flow
     @State private var showingBulkSheet = false
@@ -128,11 +139,19 @@ struct SwipeView: View {
         .sheet(isPresented: $showingBulkSheet) {
             BulkMessageSheet(
                 text: opener.trimmingCharacters(in: .whitespaces),
-                recipientCount: min(100, remaining.count),
+                recipientCount: min(Self.bulkCap, remaining.count),
                 progress: $bulkProgress,
                 sentCount: $bulkSentCount,
                 onConfirm: { performBulkSend() }
             )
+        }
+        .alert("Want to know when it clicks?", isPresented: $showingNotificationPrompt) {
+            Button("Turn on") {
+                Task { await NotificationService.requestAuthorization() }
+            }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("Click can tell you when a match or message is waiting. Never streaks, never marketing.")
         }
         .alert(
             "Hold on",
@@ -152,6 +171,22 @@ struct SwipeView: View {
     private var header: some View {
         TexturedHeader(title: "swipe", texture: .clouds) {
             HStack(spacing: 10) {
+                // The streak lives where the user actually is (the swipe
+                // tab is the default) instead of below the fold on the
+                // profile tab (MEGA-BRIEF 4.4). Cosmetic-plus-reward only
+                // — never paid streak repair.
+                if let streak = wallets.first?.currentStreak, streak > 1 {
+                    GlassCapsule {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(Theme.brandOrange)
+                        Text("\(streak)")
+                            .font(.click(.footnote, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(streak) day claim streak")
+                }
+
                 if let me, me.isBoosted, let until = me.boostedUntil {
                     BoostBadge(until: until)
                 }
@@ -436,22 +471,33 @@ struct SwipeView: View {
         opener = ""
         composerFocused = false
 
-        let conversation = conversationForOpener(profile: profile, text: text)
-        pendingContext = SwipeContext(conversation: conversation, isSuper: false)
+        let opener = conversationForOpener(profile: profile, text: text)
+        pendingContext = SwipeContext(
+            conversation: opener.conversation,
+            createdConversation: opener.created,
+            openerMessage: opener.message,
+            isSuper: false
+        )
         deckCommand = DeckCommand(liked: true)
     }
 
-    /// Reuses an existing thread ("start over" must not duplicate).
-    private func conversationForOpener(profile: UserProfile, text: String) -> Conversation {
+    /// Reuses an existing thread ("start over" must not duplicate) and
+    /// reports exactly what it created, so rewind can undo ONLY that.
+    private func conversationForOpener(
+        profile: UserProfile,
+        text: String
+    ) -> (conversation: Conversation, message: Message, created: Bool) {
         if let existing = conversations.first(where: { $0.participant?.id == profile.id }) {
-            context.insert(Message(text: text, isFromMe: true, conversation: existing))
+            let message = Message(text: text, isFromMe: true, conversation: existing)
+            context.insert(message)
             existing.lastActivity = .now
-            return existing
+            return (existing, message, false)
         }
         let conversation = Conversation(participant: profile, folder: .messages)
         context.insert(conversation)
-        context.insert(Message(text: text, isFromMe: true, conversation: conversation))
-        return conversation
+        let message = Message(text: text, isFromMe: true, conversation: conversation)
+        context.insert(message)
+        return (conversation, message, true)
     }
 
     // MARK: - Super like
@@ -485,16 +531,21 @@ struct SwipeView: View {
         }
 
         let text = opener.trimmingCharacters(in: .whitespaces)
-        var conversation: Conversation?
+        var swipeContext = SwipeContext(conversation: nil, createdConversation: false, openerMessage: nil, isSuper: true)
         if !text.isEmpty {
             opener = ""
             composerFocused = false
-            let thread = conversationForOpener(profile: profile, text: text)
-            thread.isSuperLike = true
-            conversation = thread
+            let result = conversationForOpener(profile: profile, text: text)
+            result.conversation.isSuperLike = true
+            swipeContext = SwipeContext(
+                conversation: result.conversation,
+                createdConversation: result.created,
+                openerMessage: result.message,
+                isSuper: true
+            )
         }
 
-        pendingContext = SwipeContext(conversation: conversation, isSuper: true)
+        pendingContext = swipeContext
         deckCommand = DeckCommand(liked: true)
     }
 
@@ -528,13 +579,18 @@ struct SwipeView: View {
         showingBulkSheet = true
     }
 
-    /// One composed message to the next N (<=100) people. Guardrails: an
-    /// earned booster is consumed, one send per 24h, celebrations are
-    /// suppressed, no fake replies, and rewind is cleared (undoing 100
+    /// Cap dropped 100 -> 25 (owner decision): unsolicited bulk messaging
+    /// is the category's main harassment vector, and 25 keeps the
+    /// feature's point with a fraction of the harm.
+    static let bulkCap = 25
+
+    /// One composed message to the next N (<= bulkCap) people. Guardrails:
+    /// an earned booster is consumed, one send per 24h, celebrations are
+    /// suppressed, no fake replies, and rewind is cleared (undoing bulk
     /// rows isn't supported).
     private func performBulkSend() {
         let text = opener.trimmingCharacters(in: .whitespaces)
-        let targets = Array(remaining.prefix(100))
+        let targets = Array(remaining.prefix(Self.bulkCap))
         guard !text.isEmpty, !targets.isEmpty else { return }
 
         let wallet = Wallet.ensure(in: context)
@@ -563,14 +619,15 @@ struct SwipeView: View {
                 conversation.lastActivity = sentAt
                 conversation.unreadCount = 0
 
-                // A like per recipient, but NO celebration in the loop —
-                // ~50 takeovers would fire otherwise.
+                // A SENT LIKE per recipient (deduped) — bulk sends are
+                // one-way, so they must never mint Match rows; the
+                // matches folder is mutual-only now.
                 let profileID = profile.id
-                let matchDescriptor = FetchDescriptor<Match>(
+                let likeDescriptor = FetchDescriptor<SentLike>(
                     predicate: #Predicate { $0.profile?.id == profileID }
                 )
-                if ((try? context.fetchCount(matchDescriptor)) ?? 0) == 0 {
-                    context.insert(Match(profile: profile))
+                if ((try? context.fetchCount(likeDescriptor)) ?? 0) == 0 {
+                    context.insert(SentLike(profile: profile))
                 }
 
                 if index % 10 == 9 {
@@ -582,16 +639,16 @@ struct SwipeView: View {
 
             // One save at the end; the deck swap happens in a single
             // animations-disabled transaction.
-            try? context.save()
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                for profile in targets {
-                    swipedIDs.insert(profile.id)
-                    swipeOrder.append(profile.id)
+                let alreadySwiped = swipedIDs
+                for profile in targets where !alreadySwiped.contains(profile.id) {
+                    context.insert(SwipeDecision(profileID: profile.id, liked: true))
                 }
             }
-            rewindStack = []  // Undoing 100 rows isn't supported.
+            try? context.save()
+            rewindStack = []  // Undoing bulk rows isn't supported.
 
             bulkProgress = 1
             bulkSentCount = targets.count
@@ -624,36 +681,55 @@ struct SwipeView: View {
 
     private func commitDataDeferred(profile: UserProfile, liked: Bool, context0: SwipeContext?) {
         var createdMatch: Match?
-        var mutual = false
+        var createdSentLike: SentLike?
         if liked {
             let profileID = profile.id
-            let existingMatch = FetchDescriptor<Match>(
+
+            // Every like is recorded honestly as a SentLike (deduped —
+            // "start over" must not re-create rows).
+            let existingLike = FetchDescriptor<SentLike>(
                 predicate: #Predicate { $0.profile?.id == profileID }
             )
-            if ((try? context.fetchCount(existingMatch)) ?? 0) == 0 {
-                let match = Match(profile: profile, isSuperChat: context0?.isSuper ?? false)
-                context.insert(match)
-                createdMatch = match
+            if ((try? context.fetchCount(existingLike)) ?? 0) == 0 {
+                let like = SentLike(profile: profile, isSuperLike: context0?.isSuper ?? false)
+                context.insert(like)
+                createdSentLike = like
+            }
+
+            // A Match exists ONLY when it's mutual — the matches folder
+            // used to show every one-way like as "it clicked".
+            let mutual = Boost.likesYouBack(profile, boosted: me?.isBoosted ?? false)
+            if mutual {
+                let existingMatch = FetchDescriptor<Match>(
+                    predicate: #Predicate { $0.profile?.id == profileID }
+                )
+                if ((try? context.fetchCount(existingMatch)) ?? 0) == 0 {
+                    let match = Match(profile: profile, isSuperChat: context0?.isSuper ?? false)
+                    context.insert(match)
+                    createdMatch = match
+                }
+
+                // A mutual like creates the conversation, so the match
+                // exists in chats — the celebration used to lead nowhere.
+                if context0?.conversation == nil,
+                   !conversations.contains(where: { $0.participant?.id == profile.id }) {
+                    context.insert(Conversation(participant: profile, folder: .messages))
+                }
             }
             try? context.save()
-            mutual = Boost.likesYouBack(profile, boosted: me?.isBoosted ?? false)
-
-            // A mutual like creates the conversation, so the match exists
-            // in chats — the celebration used to lead nowhere.
-            if mutual, context0?.conversation == nil,
-               !conversations.contains(where: { $0.participant?.id == profile.id }) {
-                context.insert(Conversation(participant: profile, folder: .messages))
-                try? context.save()
-            }
         }
 
         rewindStack.append(RewindEntry(
             profileID: profile.id,
             match: createdMatch,
-            conversation: context0?.conversation
+            sentLike: createdSentLike,
+            createdConversation: (context0?.createdConversation == true) ? context0?.conversation : nil,
+            addedMessage: (context0?.createdConversation == false) ? context0?.openerMessage : nil
         ))
 
-        if mutual {
+        // Celebrate only when a match was actually created — re-swiping
+        // someone already matched must not re-celebrate.
+        if createdMatch != nil {
             celebrationPending = profile
         } else if context0?.conversation != nil {
             // Suppress the toast when a celebration will cover it anyway.
@@ -664,9 +740,11 @@ struct SwipeView: View {
     /// Runs when the fly-off animation completes.
     private func finishSwipe(profile: UserProfile, liked: Bool) {
         withAnimation(motion.state) {
-            swipedIDs.insert(profile.id)
-            swipeOrder.append(profile.id)
+            if !swipedIDs.contains(profile.id) {
+                context.insert(SwipeDecision(profileID: profile.id, liked: liked))
+            }
         }
+        try? context.save()
         if let profile = celebrationPending {
             celebrationPending = nil
             withAnimation(motion.celebrate) {
@@ -681,23 +759,35 @@ struct SwipeView: View {
         guard let entry = rewindStack.popLast() else { return }
         Haptics.impact(.light)
         withAnimation(motion.state) {
-            swipedIDs.remove(entry.profileID)
-            swipeOrder.removeAll { $0 == entry.profileID }
+            let profileID = entry.profileID
+            for decision in decisions where decision.profileID == profileID {
+                context.delete(decision)
+            }
         }
         if let match = entry.match {
             context.delete(match)
         }
-        if let conversation = entry.conversation {
-            context.delete(conversation)  // Messages cascade.
+        if let sentLike = entry.sentLike {
+            context.delete(sentLike)
+        }
+        if let conversation = entry.createdConversation {
+            // Only a thread THIS swipe created cascades away.
+            context.delete(conversation)
+        } else if let message = entry.addedMessage {
+            // Pre-existing thread: delete just the opener — rewinding
+            // used to cascade-delete a week of history (MEGA-BRIEF 0.4).
+            context.delete(message)
         }
         try? context.save()
     }
 
     private func reset() {
         withAnimation(motion.state) {
-            swipedIDs = []
-            swipeOrder = []
+            for decision in decisions {
+                context.delete(decision)
+            }
         }
+        try? context.save()
         rewindStack = []
     }
 
@@ -753,6 +843,10 @@ struct SwipeView: View {
                     withAnimation(motion.celebrateOut) {
                         celebrating = nil
                     }
+                    if !notificationsPrimed {
+                        notificationsPrimed = true
+                        showingNotificationPrompt = true
+                    }
                 }
             )
             // The parent owns the entrance — the view no longer fights it
@@ -767,11 +861,20 @@ struct SwipeView: View {
 private struct RewindEntry {
     let profileID: UUID
     let match: Match?
-    let conversation: Conversation?
+    let sentLike: SentLike?
+    /// Only set when THIS swipe created the thread — rewinding must
+    /// never cascade-delete a pre-existing conversation's history.
+    let createdConversation: Conversation?
+    /// The single opener message added to a PRE-EXISTING thread; rewind
+    /// deletes just this row (MEGA-BRIEF 0.4).
+    let addedMessage: Message?
 }
 
 private struct SwipeContext {
     let conversation: Conversation?
+    /// True when the opener created the thread (vs reusing one).
+    let createdConversation: Bool
+    let openerMessage: Message?
     let isSuper: Bool
 }
 

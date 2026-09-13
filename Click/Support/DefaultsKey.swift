@@ -40,4 +40,20 @@ enum DefaultsKey {
     // them via CommunityService.eraseUserCreated).
     static let communityJoinsDay = "communityJoinsDay"
     static let communityJoinsCount = "communityJoinsCount"
+
+    /// Per-install bingo seed salt (anti-cheat, MEGA-BRIEF 0.7). Install
+    /// metadata, not account data — AccountEraser leaves it alone.
+    static let bingoSeedSalt = "bingoSeedSalt"
+
+    /// Last foreground timestamp for the welcome-back banner (account-
+    /// scoped; AccountEraser clears it).
+    static let lastActiveAt = "lastActiveAt"
+
+    // Notification preferences (account-scoped; AccountEraser clears
+    // them and cancels everything pending).
+    static let notificationsPrimed = "notificationsPrimed"
+    static let notifyMessages = "notifyMessages"
+    static let notifyDailyReward = "notifyDailyReward"
+    static let notifyBoost = "notifyBoost"
+    static let notifyEvents = "notifyEvents"
 }

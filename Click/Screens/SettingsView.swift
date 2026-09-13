@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -24,6 +25,7 @@ struct SettingsView: View {
     @State private var copyRevertTask: Task<Void, Never>?
     @State private var confirmingSignOut = false
     @State private var legalDocument: LegalDocument?
+    @State private var notificationStatus: UNAuthorizationStatus?
 
     // isDeleted guard: sign-out erases the row while the dismissal
     // transition still has this screen on screen for a frame.
@@ -143,14 +145,50 @@ struct SettingsView: View {
     // real (DefaultsKey.showMyState stays so AccountEraser keeps clearing
     // historical values).
 
+    /// Real controls, honestly gated (MEGA-BRIEF 0.5/P1): before any
+    /// authorization request the app has no entry in system Settings, so
+    /// the old deep link led to nothing.
     private var notificationsSection: some View {
-        Section("system notifications") {
-            Button("manage notifications") {
-                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(url)
+        Section {
+            switch notificationStatus {
+            case .notDetermined?, nil:
+                Button("turn on notifications") {
+                    Task {
+                        await NotificationService.requestAuthorization()
+                        await refreshNotificationStatus()
+                    }
+                }
+                .foregroundStyle(Theme.primary)
+            case .denied?:
+                Button("notifications are off — open system settings") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .foregroundStyle(Theme.primary)
+            default:
+                Toggle("matches & messages", isOn: notifyBinding(DefaultsKey.notifyMessages))
+                Toggle("daily reward ready", isOn: notifyBinding(DefaultsKey.notifyDailyReward))
+                Toggle("boost finished", isOn: notifyBinding(DefaultsKey.notifyBoost))
+                Toggle("event ending", isOn: notifyBinding(DefaultsKey.notifyEvents))
             }
-            .foregroundStyle(Theme.primary)
+        } header: {
+            Text("notifications")
+        } footer: {
+            Text("Click only notifies you about things that actually happened — never streaks, view counts or marketing.")
         }
+        .tint(Theme.primary)
+        .task { await refreshNotificationStatus() }
+    }
+
+    private func notifyBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { UserDefaults.standard.object(forKey: key) as? Bool ?? true },
+            set: { UserDefaults.standard.set($0, forKey: key) }
+        )
+    }
+
+    private func refreshNotificationStatus() async {
+        notificationStatus = await NotificationService.authorizationStatus()
     }
 
     // The dead rows (help, feature request, beta, account status, chat

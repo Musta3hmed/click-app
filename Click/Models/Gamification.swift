@@ -76,6 +76,20 @@ final class Wallet {
     var lastMonthlyBonusAt: Date? = nil
     var lastWeeklyBoostAt: Date? = nil
 
+    /// Completed daily-reward cycles (MEGA-BRIEF 4.3): cycle 1+ doubles
+    /// the coin days, so day 30 is no longer identical to day 2.
+    /// Declared default keeps lightweight migration working.
+    var rewardCycle: Int = 0
+
+    /// Cosmetic inventory (event-wheel rewards; never purchasable, never
+    /// dating visibility). Ids resolve through CosmeticCatalog.
+    var ownedCosmetics: [String] = []
+    var equippedCardFrame: String? = nil
+    var equippedAvatarRing: String? = nil
+    /// Highest streak milestone already granted (7/14/30) — reset when
+    /// the streak breaks, so the climb can be earned again.
+    var lastMilestoneGranted: Int = 0
+
     init(id: String = "primary", coins: Int = 0) {
         self.id = id
         self.coins = coins
@@ -146,15 +160,19 @@ final class BingoBoard {
     }
 }
 
-/// A decoded bingo tile reward.
+/// A decoded reward (bingo tiles and the event wheel share the codec).
 enum BingoReward: Equatable {
     case coins(Int)
     case booster(BoosterKind)
+    /// A cosmetic by catalogue id (event wheel; never sold, never
+    /// dating visibility — see CosmeticCatalog).
+    case cosmetic(String)
 
     var encoded: String {
         switch self {
         case .coins(let value): "coins:\(value)"
         case .booster(let kind): "booster:\(kind.rawValue)"
+        case .cosmetic(let id): "cosmetic:\(id)"
         }
     }
 
@@ -168,6 +186,8 @@ enum BingoReward: Equatable {
         case "booster":
             guard let kind = BoosterKind(rawValue: parts[1]) else { return nil }
             self = .booster(kind)
+        case "cosmetic":
+            self = .cosmetic(parts[1])
         default:
             return nil
         }
@@ -177,6 +197,7 @@ enum BingoReward: Equatable {
         switch self {
         case .coins(let value): "\(value) coins"
         case .booster(let kind): "1 \(kind.label)"
+        case .cosmetic(let id): CosmeticCatalog.byID[id]?.label ?? id
         }
     }
 }

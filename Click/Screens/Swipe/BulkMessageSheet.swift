@@ -16,6 +16,7 @@ struct BulkMessageSheet: View {
     let onConfirm: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.motion) private var motion
 
     var body: some View {
         VStack(spacing: 20) {
@@ -26,6 +27,16 @@ struct BulkMessageSheet: View {
 
             if let sentCount {
                 doneState(sentCount)
+                    .background {
+                        // Same particle canvas the match celebration uses
+                        // (async render, stops its own display link,
+                        // 54 particles) — no second Canvas.
+                        if !motion.reduceMotion {
+                            ConfettiView(duration: 1.8)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
             } else if progress != nil {
                 sendingState
             } else {
@@ -99,6 +110,10 @@ struct BulkMessageSheet: View {
         .padding(.top, 24)
     }
 
+    /// The flourish is about reach EARNED (one booster, once a day), on
+    /// COMPLETION — never layered over the send loop, and the restraint
+    /// copy stays visible right under it. Omitted entirely under Reduce
+    /// Motion (the check + haptic already carry the confirmation).
     private func doneState(_ count: Int) -> some View {
         VStack(spacing: 14) {
             Image(systemName: "checkmark.circle.fill")
@@ -108,6 +123,10 @@ struct BulkMessageSheet: View {
             Text("sent to \(count) people")
                 .font(.click(.title3, weight: .heavy))
                 .foregroundStyle(Theme.primary)
+            Text("everyone can report messages they don't want — keep it kind.")
+                .font(.clickPlain(.footnote, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+                .multilineTextAlignment(.center)
             Button {
                 dismiss()
             } label: {

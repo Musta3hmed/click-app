@@ -18,6 +18,12 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection: AppTab = .swipe
     @State private var chrome = ChromeState()
+    /// Non-blocking welcome-back banner after >= 48h away (MEGA-BRIEF
+    /// 4.5) — what's waiting, never an interstitial, never guilt.
+    @State private var returnSummary: String?
+    /// The once-per-event popup (3.4) and the wheel it opens.
+    @State private var popupEvent: EventDefinition?
+    @State private var wheelEvent: EventDefinition?
     /// The launch logo carries into WelcomeView — same mark, free continuity.
     @Namespace private var logoNamespace
 
@@ -102,12 +108,40 @@ struct RootView: View {
             // derived from canonical interest ids.
             CommunityService.seedIfNeeded(context)
             Boost.foregroundTick(in: context)
+            EventService.grantDailyEntryIfDue(in: context)
+            presentEventPopupIfDue()
+            checkReturnGap()
             await DemoPhotos.seedIfNeeded(context)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
+            switch phase {
+            case .active:
                 Boost.foregroundTick(in: context)
+                EventService.grantDailyEntryIfDue(in: context)
+                checkReturnGap()
+                // They're here — a "you have unread" reminder is moot.
+                NotificationService.cancelUnreadDigest()
+            case .background:
+                scheduleUnreadDigestIfNeeded()
+            default:
+                break
             }
+        }
+        .overlay(alignment: .top) { returnBanner }
+        // Dismissible by button AND by swipe (it's a sheet), once per
+        // event id. No countdown pressure, no "don't miss out".
+        .sheet(item: $popupEvent) { event in
+            EventPopupView(
+                event: event,
+                onOpenWheel: {
+                    popupEvent = nil
+                    wheelEvent = event
+                },
+                onDismiss: { popupEvent = nil }
+            )
+        }
+        .sheet(item: $wheelEvent) { event in
+            EventWheelView(event: event)
         }
         // Full-screen: a brand takeover inside a sheet's rounded card with
         // a grabber was a register mismatch.
@@ -136,6 +170,99 @@ struct RootView: View {
 
     private var currentUserName: String {
         currentUsers.first { !$0.isDeleted }?.name ?? ""
+    }
+
+    /// Once per event id, on the first foreground while it is live.
+    private func presentEventPopupIfDue() {
+        guard onboardingCompleted, let event = EventService.activeEvent() else { return }
+        let progress = EventService.progress(for: event, in: context)
+        guard !progress.popupShown else { return }
+        progress.popupShown = true
+        try? context.save()
+        popupEvent = event
+    }
+
+    /// Backgrounding with real unread messages from an identified sender
+    /// schedules ONE reminder (cancelled the moment they return).
+    private func scheduleUnreadDigestIfNeeded() {
+        let unread = ((try? context.fetch(FetchDescriptor<Conversation>())) ?? [])
+            .filter { $0.isVisible && $0.unreadCount > 0 && $0.participant?.isMuted != true }
+        guard let first = unread.max(by: { $0.lastActivity < $1.lastActivity }),
+              let sender = first.participant else { return }
+        let total = unread.reduce(0) { $0 + $1.unreadCount }
+        NotificationService.scheduleUnreadDigest(senderName: sender.name, unreadCount: total)
+    }
+
+    // MARK: - Welcome-back banner (MEGA-BRIEF 4.5)
+
+    /// After >= 48h away, say what's actually waiting. Non-blocking,
+    /// dismissible, no guilt, no countdowns.
+    private func checkReturnGap() {
+        let defaults = UserDefaults.standard
+        let lastActive = defaults.object(forKey: DefaultsKey.lastActiveAt) as? Date
+        defaults.set(Date.now, forKey: DefaultsKey.lastActiveAt)
+
+        guard onboardingCompleted,
+              let lastActive,
+              Date.now.timeIntervalSince(lastActive) >= 48 * 60 * 60 else { return }
+
+        var parts: [String] = []
+
+        let unread = ((try? context.fetch(FetchDescriptor<Conversation>())) ?? [])
+            .filter { $0.isVisible && $0.unreadCount > 0 }
+            .count
+        if unread > 0 {
+            parts.append("\(unread) unread chat\(unread == 1 ? "" : "s")")
+        }
+
+        let unclaimed = ((try? context.fetch(FetchDescriptor<DailyReward>())) ?? [])
+            .contains { !$0.isClaimed }
+        if unclaimed {
+            parts.append("your daily reward is ready")
+        }
+
+        // Everything that expires does so silently — acknowledge it.
+        if let me = currentUsers.first(where: { !$0.isDeleted }),
+           let until = me.boostedUntil, until < .now, until > lastActive {
+            parts.append("your boost finished while you were away")
+        }
+
+        guard !parts.isEmpty else { return }
+        withAnimation(Theme.Motion.state) {
+            returnSummary = "welcome back — " + parts.joined(separator: " · ")
+        }
+    }
+
+    @ViewBuilder
+    private var returnBanner: some View {
+        if let returnSummary {
+            HStack(spacing: 10) {
+                Image(systemName: "hand.wave.fill")
+                    .foregroundStyle(Theme.brandOrange)
+                    .accessibilityHidden(true)
+                Text(returnSummary)
+                    .font(.clickPlain(.footnote, weight: .semibold))
+                    .foregroundStyle(Theme.primary)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+                Button {
+                    withAnimation(Theme.Motion.state) { self.returnSummary = nil }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(Theme.secondary)
+                }
+                .buttonStyle(.clickQuiet)
+                .accessibilityLabel("Dismiss")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .cardSurface(radius: Theme.Metric.control)
+            .padding(.horizontal, Theme.Metric.gutter)
+            .padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .combine)
+        }
     }
 }
 

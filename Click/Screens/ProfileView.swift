@@ -39,6 +39,9 @@ struct ProfileView: View {
     /// Bumped when coins are earned so the wallet coin spins.
     @State private var coinEarnTrigger = 0
     @State private var insufficientCoinsMessage: String?
+    @State private var milestoneMessage: String?
+    /// One-shot race-car flourish when a boost is activated (5.1).
+    @State private var boostCarTrigger = 0
     /// Decoded once, not per body evaluation.
     @State private var myPhoto: UIImage?
     /// Scroll-driven header collapse, 0 → 1 over the first 56pt of scroll.
@@ -61,6 +64,12 @@ struct ProfileView: View {
                         identityBlock
                         communitiesSection
                         subscriptionSection
+                        if let event = EventService.activeEvent() {
+                            eventSection(event)
+                        }
+                        if !(wallet?.ownedCosmetics.isEmpty ?? true) {
+                            cosmeticsSection
+                        }
                         bingoSection
                         dailyRewardsSection
                         boostersSection
@@ -81,6 +90,15 @@ struct ProfileView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
+        // Off the OUTERMOST stack, never inside the ScrollView. Omitted
+        // from the hierarchy entirely under Reduce Motion — a car
+        // crossing the screen is the textbook vestibular trigger, and
+        // BoostBadge + the success haptic already carry the confirmation.
+        .overlay {
+            if !motion.reduceMotion {
+                RaceCarOverlay(trigger: boostCarTrigger)
+            }
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
@@ -116,6 +134,17 @@ struct ProfileView: View {
             Text(referralFeedback ?? "")
         }
         .alert(
+            "Streak milestone",
+            isPresented: Binding(
+                get: { milestoneMessage != nil },
+                set: { if !$0 { milestoneMessage = nil } }
+            )
+        ) {
+            Button("OK") { milestoneMessage = nil }
+        } message: {
+            Text(milestoneMessage ?? "")
+        }
+        .alert(
             "Not enough coins",
             isPresented: Binding(
                 get: { insufficientCoinsMessage != nil },
@@ -140,6 +169,12 @@ struct ProfileView: View {
                     Text((wallet?.coins ?? 0).formatted())
                         .font(.click(.subheadline, weight: .heavy))
                         .foregroundStyle(.white)
+                        // Scale, never wrap: "21,680" used to break into
+                        // "21,68" / "0" inside the capsule. NOT
+                        // .fixedSize() — that modifier centre-clipped the
+                        // whole app twice already.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .contentTransition(.numericText())
                         .animation(motion.numeric, value: wallet?.coins ?? 0)
                     // The "+" opens the coin store.
@@ -186,6 +221,15 @@ struct ProfileView: View {
                 isVerified: me?.isVerified ?? false,
                 photo: myPhoto
             )
+            // Equipped avatar ring (cosmetic — earned, never bought).
+            .overlay {
+                if let ringID = wallet?.equippedAvatarRing {
+                    Circle()
+                        .strokeBorder(CosmeticCatalog.tint(ringID), lineWidth: 3)
+                        .frame(width: Self.avatarSize + 10, height: Self.avatarSize + 10)
+                        .accessibilityHidden(true)
+                }
+            }
 
             HStack(spacing: 8) {
                 CountryBadge(code: me?.countryCode)
@@ -218,9 +262,11 @@ struct ProfileView: View {
             }
 
             HStack(spacing: 16) {
-                Label("\(wallet?.profileViews ?? 0) views", systemImage: "eye.fill")
+                // Simulated, and labelled as such (MEGA-BRIEF 0.3).
+                Label("\(wallet?.profileViews ?? 0) views · simulated", systemImage: "eye.fill")
                     .font(.clickPlain(.footnote, weight: .semibold))
                     .foregroundStyle(Theme.secondary)
+                    .accessibilityLabel("\(wallet?.profileViews ?? 0) simulated profile views")
 
                 // The gold tier's profile badge — a wired benefit.
                 if wallet?.subscriptionTier == .gold {
@@ -370,6 +416,102 @@ struct ProfileView: View {
         .accessibilityLabel("Subscription: \(tier.label). \(tier == .free ? "Upgrade" : "Manage") your tier.")
     }
 
+    // MARK: - Event (MEGA-BRIEF P3)
+
+    @Query private var eventProgress: [EventProgress]
+    @State private var showingWheel = false
+
+    /// The brief's UI slot: between subscription and bingo, only while
+    /// an event is live.
+    private func eventSection(_ event: EventDefinition) -> some View {
+        Button {
+            showingWheel = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: event.symbolName)
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundStyle(CommunityService.tint(event.tintToken))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(event.title)
+                        .font(.click(.headline, weight: .heavy))
+                        .foregroundStyle(Theme.primary)
+                    let entries = eventProgress.first { $0.eventID == event.id }?.entries ?? 0
+                    Text("\(entries) free \(entries == 1 ? "entry" : "entries") — spin for cosmetics and boosters")
+                        .font(.clickPlain(.footnote, weight: .medium))
+                        .foregroundStyle(Theme.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.secondary)
+            }
+            .padding(16)
+            .cardSurface(radius: Theme.Metric.tile)
+        }
+        .buttonStyle(.clickQuiet)
+        .padding(.horizontal, Theme.Metric.gutter)
+        .accessibilityLabel("\(event.title) event wheel")
+        .sheet(isPresented: $showingWheel) {
+            EventWheelView(event: event)
+        }
+    }
+
+    // MARK: - Cosmetics (earned only, never visibility)
+
+    private var cosmeticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("cosmetics")
+            Text("earned from events. tap to wear one.")
+                .font(.clickPlain(.footnote, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], alignment: .leading, spacing: 8) {
+                ForEach((wallet?.ownedCosmetics ?? []).compactMap { CosmeticCatalog.byID[$0] }) { cosmetic in
+                    cosmeticChip(cosmetic)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Metric.gutter)
+    }
+
+    private func cosmeticChip(_ cosmetic: Cosmetic) -> some View {
+        let isEquipped = wallet?.equippedCardFrame == cosmetic.id
+            || wallet?.equippedAvatarRing == cosmetic.id
+        return Button {
+            toggleCosmetic(cosmetic)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: cosmetic.symbolName)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(CosmeticCatalog.tint(cosmetic.id))
+                Text(cosmetic.label)
+                    .font(.click(.footnote, weight: .heavy))
+                    .foregroundStyle(isEquipped ? Theme.onPrimary : Theme.primary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(isEquipped ? Theme.primary : Theme.surface, in: Capsule())
+        }
+        .buttonStyle(.clickQuiet)
+        .accessibilityLabel("\(cosmetic.label), \(cosmetic.kind.label)")
+        .accessibilityAddTraits(isEquipped ? [.isSelected, .isButton] : .isButton)
+    }
+
+    private func toggleCosmetic(_ cosmetic: Cosmetic) {
+        let wallet = Wallet.ensure(in: context)
+        switch cosmetic.kind {
+        case .cardFrame:
+            wallet.equippedCardFrame = wallet.equippedCardFrame == cosmetic.id ? nil : cosmetic.id
+        case .avatarRing:
+            wallet.equippedAvatarRing = wallet.equippedAvatarRing == cosmetic.id ? nil : cosmetic.id
+        }
+        try? context.save()
+    }
+
     // MARK: - Bingo
 
     private var bingoSection: some View {
@@ -422,6 +564,11 @@ struct ProfileView: View {
         guard let me else { return }
         if Boost.activate(for: me, in: context) {
             Haptics.notify(.success)
+            boostCarTrigger += 1
+            // A real event that will really happen: the expiry.
+            if let until = me.boostedUntil {
+                NotificationService.scheduleBoostExpiry(at: until)
+            }
         } else {
             Haptics.notify(.error)
         }
@@ -459,6 +606,13 @@ struct ProfileView: View {
                         .font(.click(.footnote, weight: .heavy))
                         .foregroundStyle(Theme.brandPink)
                 }
+                // Tier 2 after the first full cycle: coin days double
+                // (MEGA-BRIEF 4.3 — day 30 must differ from day 2).
+                if rewardMultiplier > 1 {
+                    Text("tier 2 · double coins")
+                        .font(.click(.footnote, weight: .heavy))
+                        .foregroundStyle(Theme.coin)
+                }
                 Spacer()
             }
             .padding(.horizontal, Theme.Metric.gutter)
@@ -469,7 +623,8 @@ struct ProfileView: View {
                         DailyRewardCard(
                             reward: reward,
                             isActive: reward.day == activeRewardDay,
-                            isClaimableToday: !claimedToday
+                            isClaimableToday: !claimedToday,
+                            multiplier: rewardMultiplier
                         ) {
                             claim(reward)
                         }
@@ -478,7 +633,17 @@ struct ProfileView: View {
                 .padding(.horizontal, Theme.Metric.gutter)
             }
             .scrollIndicators(.hidden)
+
+            Text("streak milestones: day 7 a boost, day 14 a super chat and 25 coins, day 30 sixty coins and one of every booster.")
+                .font(.clickPlain(.caption, weight: .medium))
+                .foregroundStyle(Theme.secondary)
+                .padding(.horizontal, Theme.Metric.gutter)
         }
+    }
+
+    /// Cycle 1+ doubles coin days.
+    private var rewardMultiplier: Int {
+        (wallet?.rewardCycle ?? 0) >= 1 ? 2 : 1
     }
 
     /// The first unclaimed day is the one the user can collect.
@@ -499,35 +664,71 @@ struct ProfileView: View {
         guard !reward.isClaimed, !claimedToday else { return }
 
         // Credit BEFORE consuming, and never against a nil wallet or a
-        // missing inventory row.
+        // missing inventory row. Cycle 1+ doubles the coin days.
         let wallet = Wallet.ensure(in: context)
-        wallet.coins += reward.coinValue
+        wallet.coins += reward.coinValue * rewardMultiplier
         if let kind = reward.boosterKind {
             BoosterInventory.ensure(kind, in: context).count += 1
         }
 
-        // Streak: consecutive calendar days; a gap resets to 1.
+        // Streak: consecutive calendar days; a gap resets to 1 (and the
+        // milestone ladder resets with it, so it can be climbed again).
         if let last = wallet.lastClaimAt,
            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: .now),
            Calendar.current.isDate(last, inSameDayAs: yesterday) {
             wallet.currentStreak += 1
         } else {
             wallet.currentStreak = 1
+            wallet.lastMilestoneGranted = 0
         }
         wallet.lastClaimAt = .now
+
+        grantStreakMilestoneIfDue(wallet)
 
         reward.isClaimed = true
         reward.claimedAt = .now
         try? context.save()
         coinEarnTrigger += 1
         Haptics.notify(.success)
+        // Tomorrow's reward is now a real thing that will be ready.
+        NotificationService.scheduleDailyRewardReady()
+        // A genuine in-app action earns a wheel entry during an event.
+        EventService.grantActionEntry(in: context)
+    }
+
+    /// Named, non-random streak milestones (MEGA-BRIEF 4.3/4.4). Kept
+    /// cosmetic-plus-reward: there is deliberately NO paid streak repair.
+    private func grantStreakMilestoneIfDue(_ wallet: Wallet) {
+        let streak = wallet.currentStreak
+        guard [7, 14, 30].contains(streak), streak > wallet.lastMilestoneGranted else { return }
+        wallet.lastMilestoneGranted = streak
+
+        switch streak {
+        case 7:
+            BoosterInventory.ensure(.boost, in: context).count += 1
+            milestoneMessage = "7-day streak — you earned a boost."
+        case 14:
+            BoosterInventory.ensure(.superChat, in: context).count += 1
+            wallet.coins += 25
+            milestoneMessage = "14-day streak — a super chat and 25 coins."
+        case 30:
+            wallet.coins += 60
+            for kind in [BoosterKind.boost, .superChat, .bulkChat] {
+                BoosterInventory.ensure(kind, in: context).count += 1
+            }
+            milestoneMessage = "30-day streak — 60 coins and one of every booster."
+        default:
+            break
+        }
     }
 
     /// After day 7 is claimed, the track restarts the NEXT day — without
-    /// this the section dies permanently.
+    /// this the section dies permanently. Completing a cycle advances the
+    /// tier instead of a pure sawtooth (MEGA-BRIEF 4.3).
     private func resetRewardCycleIfFinished() {
         guard !dailyRewards.isEmpty, dailyRewards.allSatisfy(\.isClaimed) else { return }
         guard !claimedToday else { return }
+        Wallet.ensure(in: context).rewardCycle += 1
         for reward in dailyRewards {
             reward.isClaimed = false
             reward.claimedAt = nil
@@ -603,9 +804,17 @@ private struct DailyRewardCard: View {
     let isActive: Bool
     /// False once anything was claimed today — one reward per calendar day.
     let isClaimableToday: Bool
+    /// Tier multiplier for coin days (1 on the first cycle, 2 after).
+    var multiplier: Int = 1
     let onClaim: () -> Void
 
     private var canCollect: Bool { isActive && !reward.isClaimed && isClaimableToday }
+
+    /// Coin days show the multiplied value; booster days keep their label.
+    private var displayLabel: String {
+        guard reward.boosterKind == nil, multiplier > 1 else { return reward.rewardLabel }
+        return "\(reward.coinValue * multiplier) coins"
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -621,7 +830,7 @@ private struct DailyRewardCard: View {
                     .foregroundStyle(iconColor)
             }
 
-            Text(reward.rewardLabel)
+            Text(displayLabel)
                 .font(.click(.footnote, weight: .heavy))
                 .foregroundStyle(reward.isClaimed || !isActive ? Theme.secondary : Theme.primary)
                 .lineLimit(1)
@@ -637,7 +846,7 @@ private struct DailyRewardCard: View {
                         .background(Theme.primary)
                 }
                 .buttonStyle(.click)
-                .accessibilityLabel("Collect day \(reward.day) reward: \(reward.rewardLabel)")
+                .accessibilityLabel("Collect day \(reward.day) reward: \(displayLabel)")
             } else {
                 Text(statusText)
                     .font(.click(.caption, weight: .bold))
@@ -671,6 +880,56 @@ private struct DailyRewardCard: View {
     private var iconColor: Color {
         if reward.isClaimed || !isActive { return Theme.secondary.opacity(0.6) }
         return reward.coinValue > 0 ? Theme.coin : Theme.accent
+    }
+}
+
+// MARK: - Race car (MEGA-BRIEF 5.1)
+
+/// One-shot flourish when a boost activates, copying the FlyingCoin
+/// precedent: keyframeAnimator with cubic tracks, always in the
+/// hierarchy at opacity 0, hit-testing off, hidden from VoiceOver.
+/// The parent omits it entirely under Reduce Motion.
+private struct RaceCarOverlay: View {
+    let trigger: Int
+
+    private struct CarState {
+        var progress: CGFloat = -0.25   // fraction of screen width
+        var bounce: CGFloat = 0
+        var opacity: Double = 0
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            Image(systemName: "car.side.fill")
+                .font(.system(size: 40, weight: .bold))
+                .foregroundStyle(Theme.brandViolet)
+                .keyframeAnimator(initialValue: CarState(), trigger: trigger) { view, state in
+                    view
+                        .offset(
+                            x: state.progress * (geo.size.width + 120) - 60,
+                            y: geo.size.height - 180 + state.bounce
+                        )
+                        .opacity(trigger == 0 ? 0 : state.opacity)
+                } keyframes: { _ in
+                    KeyframeTrack(\.progress) {
+                        CubicKeyframe(-0.25, duration: 0.01)
+                        CubicKeyframe(1.25, duration: 0.9)
+                    }
+                    KeyframeTrack(\.bounce) {
+                        CubicKeyframe(0, duration: 0.01)
+                        CubicKeyframe(-6, duration: 0.3)
+                        CubicKeyframe(2, duration: 0.3)
+                        CubicKeyframe(0, duration: 0.3)
+                    }
+                    KeyframeTrack(\.opacity) {
+                        CubicKeyframe(1, duration: 0.01)
+                        CubicKeyframe(1, duration: 0.75)
+                        CubicKeyframe(0, duration: 0.15)
+                    }
+                }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

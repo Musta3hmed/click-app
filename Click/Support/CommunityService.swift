@@ -99,20 +99,19 @@ enum CommunityService {
             ))
         }
 
-        // Candidate memberships, once.
-        let membershipCount = (try? context.fetchCount(FetchDescriptor<CommunityMembership>())) ?? 0
-        if membershipCount == 0 {
-            let candidates = (try? context.fetch(
-                FetchDescriptor<UserProfile>(predicate: #Predicate { !$0.isCurrentUser })
-            )) ?? []
-            for candidate in candidates {
-                let mine = Set(candidate.interests)
-                let matching = catalog
-                    .filter { Set($0.interestIDs).intersection(mine).count >= 2 }
-                    .prefix(3)
-                for entry in matching {
-                    context.insert(CommunityMembership(communityID: entry.id, member: candidate))
-                }
+        // Candidate memberships: per-candidate top-up (deterministic from
+        // interest overlap), so deck expansions give NEW profiles their
+        // memberships without duplicating existing ones.
+        let candidates = (try? context.fetch(
+            FetchDescriptor<UserProfile>(predicate: #Predicate { !$0.isCurrentUser })
+        )) ?? []
+        for candidate in candidates where candidate.memberships.isEmpty {
+            let mine = Set(candidate.interests)
+            let matching = catalog
+                .filter { Set($0.interestIDs).intersection(mine).count >= 2 }
+                .prefix(3)
+            for entry in matching {
+                context.insert(CommunityMembership(communityID: entry.id, member: candidate))
             }
         }
 

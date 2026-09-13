@@ -101,6 +101,9 @@ final class Message {
     }
 }
 
+/// A MUTUAL match only. One-way likes are SentLike rows — inserting a
+/// Match on every like made the matches folder claim "it clicked" for
+/// people who never answered (MEGA-BRIEF 0.1).
 @Model
 final class Match {
     @Attribute(.unique) var id: UUID
@@ -118,5 +121,42 @@ final class Match {
         self.profile = profile
         self.matchedAt = matchedAt
         self.isSuperChat = isSuperChat
+    }
+}
+
+/// A persisted swipe decision (MEGA-BRIEF 4.2). Session state meant the
+/// same 22 people returned on every cold launch; the deck now remembers.
+@Model
+final class SwipeDecision {
+    @Attribute(.unique) var profileID: UUID
+    var liked: Bool
+    var decidedAt: Date
+
+    init(profileID: UUID, liked: Bool, decidedAt: Date = .now) {
+        self.profileID = profileID
+        self.liked = liked
+        self.decidedAt = decidedAt
+    }
+}
+
+/// An outgoing like that has not been answered — surfaced honestly as
+/// "liked — no answer yet", never as a match.
+@Model
+final class SentLike {
+    @Attribute(.unique) var id: UUID
+    var profile: UserProfile?
+    var sentAt: Date
+    var isSuperLike: Bool = false
+
+    init(
+        id: UUID = UUID(),
+        profile: UserProfile? = nil,
+        sentAt: Date = .now,
+        isSuperLike: Bool = false
+    ) {
+        self.id = id
+        self.profile = profile
+        self.sentAt = sentAt
+        self.isSuperLike = isSuperLike
     }
 }

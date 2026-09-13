@@ -45,6 +45,17 @@ enum MockData {
             }
         }
 
+        // Deck expansion to ~120 (MEGA-BRIEF 4.2): with 22 profiles and a
+        // seeking filter a user ran out in under a minute. Top-up guard so
+        // existing stores grow too; generated profiles sort after the
+        // hand-written ones (staggered createdAt), so nothing reorders.
+        if ((try? context.fetchCount(candidatesDescriptor)) ?? 0) < 100 {
+            let existingNames = Set(((try? context.fetch(candidatesDescriptor)) ?? []).map(\.name))
+            for profile in generatedCandidates() where !existingNames.contains(profile.name) {
+                context.insert(profile)
+            }
+        }
+
         let profiles = (try? context.fetch(candidatesDescriptor)) ?? []
 
         // Demo chats no longer pre-empt the empty state: a brand-new
@@ -54,7 +65,10 @@ enum MockData {
         // Guarded on the MESSAGES folder specifically — counting every
         // conversation let the seeded super-like requests block the demo
         // chats forever.
-        let hasSwiped = ((try? context.fetchCount(FetchDescriptor<Match>())) ?? 0) > 0
+        // SentLike, not Match: matches are mutual-only now, so a fresh
+        // account's first (unanswered) likes must still unlock the chats.
+        let hasSwiped = ((try? context.fetchCount(FetchDescriptor<SentLike>())) ?? 0) > 0
+            || ((try? context.fetchCount(FetchDescriptor<Match>())) ?? 0) > 0
         let messagesRaw = ChatFolder.messages.rawValue
         let messageThreads = FetchDescriptor<Conversation>(
             predicate: #Predicate { $0.folderRaw == messagesRaw }
@@ -147,6 +161,104 @@ enum MockData {
             }
             return profile
         }
+    }
+
+    /// ~98 additional deterministic candidates (MEGA-BRIEF 4.2). Same
+    /// generation every install: names combine fixed pools, and every
+    /// attribute derives from the index — no randomness, no repeats.
+    private static func generatedCandidates() -> [UserProfile] {
+        let womenNames = [
+            "Aisha", "Bianca", "Camila", "Daria", "Elif", "Freya", "Giulia",
+            "Hannah", "Ines", "Jade", "Keiko", "Laila", "Mei", "Noor",
+            "Olivia", "Paulina", "Quinn", "Rosa", "Saskia", "Tara",
+            "Uma", "Valentina", "Wren", "Ximena", "Yara", "Zainab",
+            "Anouk", "Blessing", "Catalina", "Dilara", "Emese", "Farah",
+            "Greta", "Hiba", "Iris", "Johanna", "Kirra", "Linnea",
+            "Maren", "Nadia", "Oriana", "Petra", "Rhea", "Sanne",
+            "Thandi", "Una", "Vera", "Willow", "Yuki"
+        ]
+        let menNames = [
+            "Andre", "Bruno", "Callum", "Dmitri", "Emre", "Felix", "Gustav",
+            "Hamza", "Idris", "Jonas", "Kenji", "Luca", "Marco", "Nils",
+            "Omar", "Pablo", "Quentin", "Rafael", "Stefan", "Theo",
+            "Umut", "Viktor", "Wesley", "Xavier", "Yannick", "Zane",
+            "Anders", "Bilal", "Caspar", "Dario", "Elias", "Finn",
+            "Gabriel", "Hugo", "Ivan", "Joao", "Kofi", "Lorenzo",
+            "Matteo", "Noe", "Oskar", "Piotr", "Ravi", "Santiago",
+            "Tomas", "Ugo", "Vince", "Wiktor", "Yusei"
+        ]
+        let surnames = [
+            "Adeyemi", "Bergstrom", "Costa", "Dahl", "Eriksen", "Fontaine",
+            "Garcia", "Huang", "Ivanov", "Jansen", "Kaur", "Laurent",
+            "Moreau", "Nakamura", "Okoro", "Papadopoulos", "Quist",
+            "Rossi", "Schmidt", "Tanaka", "Ueda", "Vargas", "Weber",
+            "Yamada", "Zhang"
+        ]
+        let bios = [
+            "professional overthinker, amateur chef",
+            "will trade playlists on the first message",
+            "my plants are thriving, ask me how",
+            "here for the banter, staying for the snacks",
+            "part-time gym person, full-time snack person",
+            "tell me your favourite film and I'll judge kindly",
+            "collecting sunsets and parking fines",
+            "fluent in sarcasm and two other languages",
+            "looking for someone to split appetisers with",
+            "my camera roll is 90 percent clouds",
+            "weekend hiker, weekday couch strategist",
+            "I make a genuinely great cup of tea",
+            "chaotic neutral with good intentions",
+            "yes that is my real laugh",
+            "board game night is a personality",
+            "training for a marathon (emotionally)",
+            "ask me about the time I got lost in Lisbon",
+            "quietly competitive at mini golf",
+            "my love language is sending memes",
+            "trying every dumpling place in the city",
+            "big fan of small dogs and long walks",
+            "karaoke first, questions later",
+            "I will absolutely steal your chips",
+            "sunrise person learning to be a night person"
+        ]
+        let countries = ["AU", "GB", "US", "DE", "FR", "ES", "IT", "NL", "SE", "JP", "KR", "BR", "MX", "IN", "NG", "TR", "PL", "CA", "NZ", "PT"]
+        let zodiacs = Zodiac.allCases
+        let interestIDs = InterestCatalog.all.map(\.id)
+
+        // The hand-written seeds use base = now with 0.01s steps for the
+        // first 22; continue the sequence after them.
+        let base = Date.now.addingTimeInterval(1)
+
+        var profiles: [UserProfile] = []
+        let count = 98
+        for index in 0..<count {
+            let isWoman = index % 2 == 0
+            let firstNames = isWoman ? womenNames : menNames
+            let first = firstNames[(index / 2) % firstNames.count]
+            let surname = surnames[index % surnames.count]
+            let name = "\(first) \(surname)"
+
+            // 3-5 interests, strided so neighbours differ.
+            let interestCount = 3 + index % 3
+            var interests: [String] = []
+            for pick in 0..<interestCount {
+                interests.append(interestIDs[(index * 7 + pick * 13) % interestIDs.count])
+            }
+
+            let profile = UserProfile(
+                name: name,
+                age: 18 + (index * 5) % 12,
+                bio: bios[index % bios.count],
+                countryCode: countries[index % countries.count],
+                zodiac: zodiacs[index % zodiacs.count],
+                interests: Array(Set(interests)).sorted(),
+                isVerified: index % 5 == 0,
+                isOnline: index % 3 == 0,
+                gender: isWoman ? .woman : .man,
+                createdAt: base.addingTimeInterval(Double(index) * 0.01)
+            )
+            profiles.append(profile)
+        }
+        return profiles
     }
 
     /// Prompt answers for a spread of seeded candidates, keyed by name so
