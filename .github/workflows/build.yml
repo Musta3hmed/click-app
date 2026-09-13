@@ -49,6 +49,15 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           xcodebuild -version
 
+      # swift-format baseline (MEGA-BRIEF 2.4). Report-only for now: the
+      # findings print in the log without failing the build, because the
+      # never-formatted 8k-LOC baseline needs one local cleanup run on
+      # the Mac first. Once that lands, add --strict and this becomes a
+      # real gate like the emoji and motion lints above.
+      - name: swift-format lint (report only)
+        run: |
+          xcrun swift format lint --recursive --configuration .swift-format Click ClickTests ClickUITests || true
+
       - name: Build
         run: |
           set -o pipefail

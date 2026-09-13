@@ -274,7 +274,10 @@ struct RootView: View {
 private struct LaunchPlaceholder: View {
     let logoNamespace: Namespace.ID
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // Resolved through the motion environment - RootView is the single
+    // accessibilityReduceMotion read (MEGA-BRIEF 5.3 cleanup).
+    @Environment(\.motion) private var motion
+    private var reduceMotion: Bool { motion.reduceMotion }
     @State private var showSpinner = false
 
     var body: some View {
@@ -322,16 +325,28 @@ private struct TabBarHost: View {
     @Binding var selection: AppTab
 
     @Query private var conversations: [Conversation]
+    @Query private var eventProgress: [EventProgress]
 
     var body: some View {
         FloatingTabBar(selection: $selection, badges: badges)
     }
 
     private var badges: [AppTab: Int] {
+        var result: [AppTab: Int] = [:]
         let unread = conversations
             .filter { $0.isVisible && !( $0.participant?.isMuted ?? false) }
             .reduce(0) { $0 + $1.unreadCount }
-        return unread > 0 ? [.chats: unread] : [:]
+        if unread > 0 { result[.chats] = unread }
+
+        // The event badge (MEGA-BRIEF 3.2): unspent free entries while an
+        // event is live. EARNED and clears at zero — never the unearned
+        // permanent dot that trains users to ignore badges.
+        if let event = EventService.activeEvent(),
+           let entries = eventProgress.first(where: { $0.eventID == event.id })?.entries,
+           entries > 0 {
+            result[.profile] = entries
+        }
+        return result
     }
 }
 
