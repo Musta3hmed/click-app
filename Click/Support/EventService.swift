@@ -64,7 +64,7 @@ enum EventService {
             title: "spooky season",
             symbolName: "moon.stars.fill",
             tintToken: "brandOrange",
-            startsAt: utcDate(2026, 10, 24),
+            startsAt: utcDate(2026, 9, 13),
             endsAt: utcDate(2026, 11, 2),
             pool: [
                 BingoReward.cosmetic("pumpkin-frame").encoded,      // 1 - top
